@@ -1,0 +1,7 @@
+apply plugin: "de.mannodermaus.android-junit5"
+
+dependencies {
+    implementation library.kotlin
+    testRuntimeOnly library.jupiterEngine
+    testImplementation groups.forTest
+}

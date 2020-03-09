@@ -1,0 +1,3 @@
+[submodule "smoothing-algorithm"]
+	path = smoothing-algorithm
+	url = https://github.com/23alot/smoothing-algorithm
