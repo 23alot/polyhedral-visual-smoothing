@@ -1,0 +1,2 @@
+rootProject.name='polyhedral-visual-smoothing'
+include ':app', ':navigation', ':utils', ':ui', ':smoothing-algorithm'
