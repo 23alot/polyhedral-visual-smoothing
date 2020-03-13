@@ -1,6 +1,9 @@
 package com.supesuba.smoothing.presentation.view
 
 import android.opengl.GLES32
+import com.supesuba.smoothing.R
+import com.supesuba.smoothing.model.repository.ShaderRepository
+import kotlinx.coroutines.runBlocking
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -16,31 +19,17 @@ var triangleCoords = floatArrayOf(     // in counterclockwise order:
     0.5f, -0.311004243f, 0.0f      // bottom right
 )
 
-class Triangle {
-
-
-    private val vertexShaderCode =
-        "attribute vec4 vPosition;" +
-                "void main() {" +
-                "  gl_Position = vPosition;" +
-                "}"
-
-    private val fragmentShaderCode =
-        "precision mediump float;" +
-                "uniform vec4 vColor;" +
-                "void main() {" +
-                "  gl_FragColor = vColor;" +
-                "}"
+class Triangle(private val shaderRepository: ShaderRepository) {
 
     // Set color with red, green, blue and alpha (opacity) values
-    val color = floatArrayOf(0.63671875f, 0.76953125f, 0.22265625f, 1.0f)
+    val color = floatArrayOf(0.63671875f, 0.26953125f, 0.22265625f, 1f)
 
     private var mProgram: Int
 
     init {
 
-        val vertexShader: Int = loadShader(GLES32.GL_VERTEX_SHADER, vertexShaderCode)
-        val fragmentShader: Int = loadShader(GLES32.GL_FRAGMENT_SHADER, fragmentShaderCode)
+        val vertexShader: Int = runBlocking { shaderRepository.loadShader(GLES32.GL_VERTEX_SHADER, R.raw.vertex_shader) }
+        val fragmentShader: Int = runBlocking { shaderRepository.loadShader(GLES32.GL_FRAGMENT_SHADER, R.raw.fragment_shader) }
 
         // create empty OpenGL ES Program
         mProgram = GLES32.glCreateProgram().also {
@@ -71,20 +60,6 @@ class Triangle {
             }
         }
 
-
-
-    fun loadShader(type: Int, shaderCode: String): Int {
-
-        // create a vertex shader type (GLES20.GL_VERTEX_SHADER)
-        // or a fragment shader type (GLES20.GL_FRAGMENT_SHADER)
-        return GLES32.glCreateShader(type).also { shader ->
-
-            // add the source code to the shader and compile it
-            GLES32.glShaderSource(shader, shaderCode)
-            GLES32.glCompileShader(shader)
-        }
-    }
-
     private var positionHandle: Int = 0
     private var mColorHandle: Int = 0
 
@@ -96,7 +71,7 @@ class Triangle {
         GLES32.glUseProgram(mProgram)
 
         // get handle to vertex shader's vPosition member
-        positionHandle = GLES32.glGetAttribLocation(mProgram, "vPosition").also {
+        positionHandle = GLES32.glGetAttribLocation(mProgram, "a_Position").also {
 
             // Enable a handle to the triangle vertices
             GLES32.glEnableVertexAttribArray(it)
@@ -112,7 +87,8 @@ class Triangle {
             )
 
             // get handle to fragment shader's vColor member
-            mColorHandle = GLES32.glGetUniformLocation(mProgram, "vColor").also { colorHandle ->
+            // glColor3f нет
+            mColorHandle = GLES32.glGetUniformLocation(mProgram, "u_Color").also { colorHandle ->
 
                 // Set color for drawing the triangle
                 GLES32.glUniform4fv(colorHandle, 1, color, 0)
