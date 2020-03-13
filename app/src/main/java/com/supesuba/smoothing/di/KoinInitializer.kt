@@ -1,6 +1,8 @@
 package com.supesuba.smoothing.di
 
+import android.content.Context
 import com.supesuba.navigation.di.navigationModule
+import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 
 /**
@@ -8,8 +10,9 @@ import org.koin.core.context.startKoin
  */
 object KoinInitializer {
 
-    fun init() {
+    fun init(context: Context) {
         startKoin {
+            androidContext(context)
             modules(
                 listOf(
                     mainModule,
