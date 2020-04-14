@@ -27,4 +27,23 @@ class MainFragment : BaseFragment() {
         gLView = SmoothingGLSurfaceView(requireContext(), shaderRepository)
         return gLView
     }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+    }
+
+    override fun onResume() {
+        super.onResume()
+        gLView.onResume()
+    }
+
+    override fun onPause() {
+        gLView.onPause()
+        super.onPause()
+    }
+
+    fun test() {
+
+    }
 }
