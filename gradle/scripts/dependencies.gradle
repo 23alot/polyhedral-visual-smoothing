@@ -42,7 +42,9 @@ ext {
             navigation                   : project(":navigation"),
 
             utils                        : project(":utils"),
-            ui                           : project(":ui")
+            ui                           : project(":ui"),
+
+            smoothingAlgorithm           : project(":smoothing-algorithm")
     ]
 
     groups = [

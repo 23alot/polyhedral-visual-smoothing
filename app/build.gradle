@@ -3,6 +3,7 @@ apply plugin: 'kotlin-android'
 apply from: "$rootDir/gradle/scripts/android-module.gradle"
 
 dependencies {
+    implementation files('libs/obj-0.3.0.jar')
     implementation library.cicerone
     implementation library.navigation
     implementation library.utils
@@ -16,6 +17,8 @@ dependencies {
     implementation library.lifecycleLivedata
     implementation library.ui
     implementation library.material
+
+    implementation library.smoothingAlgorithm
 }
 
 apply plugin: 'kotlin-android-extensions'
