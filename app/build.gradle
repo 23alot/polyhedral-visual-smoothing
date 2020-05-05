@@ -17,6 +17,8 @@ dependencies {
     implementation library.lifecycleLivedata
     implementation library.ui
     implementation library.material
+
+    implementation library.smoothingAlgorithm
 }
 
 apply plugin: 'kotlin-android-extensions'

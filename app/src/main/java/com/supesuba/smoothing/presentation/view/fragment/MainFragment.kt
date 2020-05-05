@@ -6,8 +6,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import com.supesuba.navigation.ui.BaseFragment
+import com.supesuba.smoothing.R
 import com.supesuba.smoothing.model.repository.ShaderRepository
 import com.supesuba.smoothing.presentation.view.surface.SmoothingGLSurfaceView
+import kotlinx.android.synthetic.main.fragment_smoothing_pn.*
 import org.koin.android.ext.android.get
 
 /**
@@ -23,9 +25,7 @@ class MainFragment : BaseFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        val shaderRepository: ShaderRepository = get()
-        gLView = SmoothingGLSurfaceView(requireContext(), shaderRepository)
-        return gLView
+        return inflater.inflate(R.layout.fragment_smoothing_pn, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -35,15 +35,11 @@ class MainFragment : BaseFragment() {
 
     override fun onResume() {
         super.onResume()
-        gLView.onResume()
+        renderView.onResume()
     }
 
     override fun onPause() {
-        gLView.onPause()
+        renderView.onPause()
         super.onPause()
-    }
-
-    fun test() {
-
     }
 }
