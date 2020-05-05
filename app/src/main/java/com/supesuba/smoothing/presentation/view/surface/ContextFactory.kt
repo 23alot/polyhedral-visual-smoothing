@@ -12,7 +12,8 @@ import javax.microedition.khronos.egl.EGLDisplay
  */
 
 class ContextFactory : EGLContextFactory {
-    override fun createContext(
+
+        override fun createContext(
         egl: EGL10,
         display: EGLDisplay?,
         eglConfig: EGLConfig?

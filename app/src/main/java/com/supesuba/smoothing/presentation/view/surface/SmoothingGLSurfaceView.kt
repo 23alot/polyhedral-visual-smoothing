@@ -15,7 +15,7 @@ class SmoothingGLSurfaceView(context: Context, shaderRepository: ShaderRepositor
     init {
 
         setEGLContextFactory(ContextFactory())
-        setEGLConfigChooser(ConfigChooser())
+        setEGLConfigChooser(ConfigChooser(8,8,8,8, 0 ,0))
         // Create an OpenGL ES 3.2 context
 
         renderer = SmoothingGLRenderer(shaderRepository)
