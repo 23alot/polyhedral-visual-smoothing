@@ -2,16 +2,22 @@ package com.supesuba.smoothing.presentation.view
 
 import android.opengl.GLES32
 import android.opengl.Matrix
-import android.os.SystemClock
 import com.supesuba.smoothing.Figure
 import com.supesuba.smoothing.R
 import com.supesuba.smoothing.Triangle
 import com.supesuba.smoothing.Vertex
 import com.supesuba.smoothing.model.repository.ShaderRepository
-import com.supesuba.smoothing.trash.*
-import de.javagl.obj.*
+import com.supesuba.smoothing.trash.RenderObject
+import com.supesuba.smoothing.trash.TriangleWithIndices
+import de.javagl.obj.Obj
+import de.javagl.obj.ObjData
+import de.javagl.obj.ObjSplitting
+import de.javagl.obj.ObjUtils
 import kotlinx.coroutines.runBlocking
-import java.nio.*
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+import java.nio.ShortBuffer
 
 
 /**
@@ -25,61 +31,65 @@ var triangleCoords = floatArrayOf(     // in counterclockwise order:
     0.5f, -0.311004243f, 0.0f      // bottom right
 )
 
-val cubeVertices = floatArrayOf(-1.0f,  1.0f, -1.0f, /* Back. */
-    1.0f,  1.0f, -1.0f,
+val cubeVertices = floatArrayOf(
+    -1.0f, 1.0f, -1.0f, /* Back. */
+    1.0f, 1.0f, -1.0f,
     -1.0f, -1.0f, -1.0f,
     1.0f, -1.0f, -1.0f,
-    -1.0f,  1.0f,  1.0f, /* Front. */
-    1.0f,  1.0f,  1.0f,
-    -1.0f, -1.0f,  1.0f,
-    1.0f, -1.0f,  1.0f,
-    -1.0f,  1.0f, -1.0f, /* Left. */
+    -1.0f, 1.0f, 1.0f, /* Front. */
+    1.0f, 1.0f, 1.0f,
+    -1.0f, -1.0f, 1.0f,
+    1.0f, -1.0f, 1.0f,
+    -1.0f, 1.0f, -1.0f, /* Left. */
     -1.0f, -1.0f, -1.0f,
-    -1.0f, -1.0f,  1.0f,
-    -1.0f,  1.0f,  1.0f,
-    1.0f,  1.0f, -1.0f, /* Right. */
+    -1.0f, -1.0f, 1.0f,
+    -1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, -1.0f, /* Right. */
     1.0f, -1.0f, -1.0f,
-    1.0f, -1.0f,  1.0f,
-    1.0f,  1.0f,  1.0f,
+    1.0f, -1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f,
     -1.0f, -1.0f, -1.0f, /* Top. */
-    -1.0f, -1.0f,  1.0f,
-    1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f, 1.0f,
+    1.0f, -1.0f, 1.0f,
     1.0f, -1.0f, -1.0f,
-    -1.0f,  1.0f, -1.0f, /* Bottom. */
-    -1.0f,  1.0f,  1.0f,
-    1.0f,  1.0f,  1.0f,
-    1.0f,  1.0f, -1.0f)
+    -1.0f, 1.0f, -1.0f, /* Bottom. */
+    -1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, -1.0f
+)
 
 val colour = floatArrayOf(
     1.0f, 0.0f, 0.0f,
-        1.0f, 0.0f, 0.0f,
-        1.0f, 0.0f, 0.0f,
-        1.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f,
-        0.0f, 1.0f, 0.0f,
-        0.0f, 1.0f, 0.0f,
-        0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 1.0f,
-        1.0f, 1.0f, 0.0f,
-        1.0f, 1.0f, 0.0f,
-        1.0f, 1.0f, 0.0f,
-        1.0f, 1.0f, 0.0f,
-        0.0f, 1.0f, 1.0f,
-        0.0f, 1.0f, 1.0f,
-        0.0f, 1.0f, 1.0f,
-        0.0f, 1.0f, 1.0f,
-        1.0f, 0.0f, 1.0f,
-        1.0f, 0.0f, 1.0f,
-        1.0f, 0.0f, 1.0f,
-        1.0f, 0.0f, 1.0f
+    1.0f, 0.0f, 0.0f,
+    1.0f, 0.0f, 0.0f,
+    1.0f, 0.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
+    0.0f, 0.0f, 1.0f,
+    0.0f, 0.0f, 1.0f,
+    0.0f, 0.0f, 1.0f,
+    0.0f, 0.0f, 1.0f,
+    1.0f, 1.0f, 0.0f,
+    1.0f, 1.0f, 0.0f,
+    1.0f, 1.0f, 0.0f,
+    1.0f, 1.0f, 0.0f,
+    0.0f, 1.0f, 1.0f,
+    0.0f, 1.0f, 1.0f,
+    0.0f, 1.0f, 1.0f,
+    0.0f, 1.0f, 1.0f,
+    1.0f, 0.0f, 1.0f,
+    1.0f, 0.0f, 1.0f,
+    1.0f, 0.0f, 1.0f,
+    1.0f, 0.0f, 1.0f
 )
 
-val indices = shortArrayOf(0, 2, 3, 0, 1, 3, 4, 6, 7, 4, 5, 7, 8, 9,
+val indices = shortArrayOf(
+    0, 2, 3, 0, 1, 3, 4, 6, 7, 4, 5, 7, 8, 9,
     10, 11, 8, 10, 12, 13, 14, 15, 12, 14, 16, 17, 18, 16, 19,
-    18, 20, 21, 22, 20, 23, 22)
+    18, 20, 21, 22, 20, 23, 22
+)
 
 
 class Triangle123(private val shaderRepository: ShaderRepository) {
@@ -107,6 +117,7 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
             GLES32.glLinkProgram(it)
         }
     }
+
     private var vertexLocation = 0
     private var vertexColourLocation = 0
     private val viewMatrix = FloatArray(16)
@@ -229,7 +240,6 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
     }
 
 
-
     private fun createProjectionMatrix(width: Int, height: Int) {
         var ratio = 1f
         var left = -1f
@@ -249,6 +259,12 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         }
         Matrix.frustumM(projectionMatrix, 0, left, right, bottom, top, near, far)
     }
+
+    data class EyePosition(
+        val eyeX: Float = 0f, val eyeY: Float = 3f, val eyeZ: Float = 7f
+    )
+
+    private var eyePosition = EyePosition()
 
     private fun createViewMatrix() {
         // точка положения камеры
@@ -281,13 +297,23 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         val a = 0
     }
 
+    fun onScrollEvent(dx: Float, dy: Float) {
+
+        eyePosition = EyePosition(
+            eyeX = eyePosition.eyeX + dx / 10,
+            eyeY = eyePosition.eyeY + dy / 10,
+            eyeZ = 0f
+        )
+
+        setModelMatrix()
+    }
+
     private var renderObject: RenderObject? = null
 
     private fun setModelMatrix() {
         Matrix.setIdentityM(modelMatrix, 0)
-        val angle: Float =
-            (SystemClock.uptimeMillis() % 10000f) / 10000f * 360f
-//        Matrix.rotateM(modelMatrix, 0, angle, 0f, 1f, 0f)
+        Matrix.rotateM(modelMatrix, 0, eyePosition.eyeY, 1f, 0f, 0f)
+        Matrix.rotateM(modelMatrix, 0, eyePosition.eyeX, 0f, 1f, 0f)
         Matrix.scaleM(modelMatrix, 0, 0.6f, 0.6f, 0.6f)
     }
 
@@ -364,8 +390,8 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
             .order(ByteOrder.nativeOrder()).asFloatBuffer()
         r11.put(r10)
 
-        val colors = FloatArray(r5*3)
-        for (i in 0 until r5*3) {
+        val colors = FloatArray(r5 * 3)
+        for (i in 0 until r5 * 3) {
             colors[i] = color[i % color.size]
         }
 
@@ -454,9 +480,9 @@ data class Vertic(
 
 fun crossProduct(v1: Vertic, v2: Vertic): Vertic {
     return Vertic(
-        x = v1.y*v2.z - v1.z*v2.y,
-        y = v1.z*v2.x - v1.x*v2.z,
-        z = v1.x*v2.y - v1.y*v2.x
+        x = v1.y * v2.z - v1.z * v2.y,
+        y = v1.z * v2.x - v1.x * v2.z,
+        z = v1.x * v2.y - v1.y * v2.x
     )
 }
 
@@ -469,8 +495,8 @@ fun toVertexList(array: FloatArray): List<Vertex> {
     for (i in 0 until array.count() - 2 step 3) {
         val v = Vertex(
             x = array[i],
-            y = array[i+1],
-            z = array[i+2]
+            y = array[i + 1],
+            z = array[i + 2]
         )
         vertices += v
     }

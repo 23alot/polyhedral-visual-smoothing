@@ -23,4 +23,13 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
     override fun onSurfaceChanged(unused: GL10, width: Int, height: Int) {
         triangle123.setupGraphics(width, height)
     }
+
+    fun onScrollEvent(event: ScrollEvent) {
+        triangle123.onScrollEvent(event.dx, event.dy)
+    }
 }
+
+data class ScrollEvent(
+    val dx: Float,
+    val dy: Float
+)
