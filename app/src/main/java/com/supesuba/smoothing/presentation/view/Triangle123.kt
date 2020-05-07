@@ -265,6 +265,7 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
     )
 
     private var eyePosition = EyePosition()
+    private var scaleFactor: Float = 1f
 
     private fun createViewMatrix() {
         // точка положения камеры
@@ -308,13 +309,18 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         setModelMatrix()
     }
 
+    fun onScaleEvent(scaleFactor: Float) {
+        this.scaleFactor = scaleFactor
+        setModelMatrix()
+    }
+
     private var renderObject: RenderObject? = null
 
     private fun setModelMatrix() {
         Matrix.setIdentityM(modelMatrix, 0)
         Matrix.rotateM(modelMatrix, 0, eyePosition.eyeY, 1f, 0f, 0f)
         Matrix.rotateM(modelMatrix, 0, eyePosition.eyeX, 0f, 1f, 0f)
-        Matrix.scaleM(modelMatrix, 0, 0.6f, 0.6f, 0.6f)
+        Matrix.scaleM(modelMatrix, 0, scaleFactor, scaleFactor, scaleFactor)
     }
 
     var angle = 0f

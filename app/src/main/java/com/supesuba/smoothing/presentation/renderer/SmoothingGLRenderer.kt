@@ -1,6 +1,7 @@
 package com.supesuba.smoothing.presentation.renderer
 
 import android.opengl.GLSurfaceView
+import android.util.Log
 import com.supesuba.smoothing.model.repository.ShaderRepository
 import com.supesuba.smoothing.presentation.view.Triangle123
 import javax.microedition.khronos.egl.EGLConfig
@@ -26,6 +27,10 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
 
     fun onScrollEvent(event: ScrollEvent) {
         triangle123.onScrollEvent(event.dx, event.dy)
+    }
+
+    fun onScaleEvent(scaleFactor: Float) {
+        triangle123.onScaleEvent(scaleFactor)
     }
 }
 
