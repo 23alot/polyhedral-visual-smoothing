@@ -10,6 +10,7 @@ dependencies {
     implementation library.multidex
     implementation library.koinViewModel
     implementation groups.koinWithExt
+    implementation library.coroutinesCore
     implementation library.constraintLayout
     implementation library.fragmentKtx
     implementation library.lifecycleExtensions

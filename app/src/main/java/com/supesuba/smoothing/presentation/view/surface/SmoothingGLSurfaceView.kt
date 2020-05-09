@@ -46,6 +46,10 @@ class SmoothingGLSurfaceView(
         return result || super.onTouchEvent(event)
     }
 
+    fun onSmoothingLevelChanged(smoothingLevel: Int) {
+        renderer.onSmoothingLevelChanged(smoothingLevel)
+    }
+
     private inner class GestureListener : GestureDetector.SimpleOnGestureListener(), ScaleGestureDetector.OnScaleGestureListener {
 
         private var scaleFactor: Float = 1f

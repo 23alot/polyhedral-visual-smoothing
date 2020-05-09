@@ -13,6 +13,7 @@ import de.javagl.obj.Obj
 import de.javagl.obj.ObjData
 import de.javagl.obj.ObjSplitting
 import de.javagl.obj.ObjUtils
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -118,6 +119,10 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         }
     }
 
+    private val state: MutableStateFlow<Int> = MutableStateFlow(5)
+
+
+
     private var vertexLocation = 0
     private var vertexColourLocation = 0
     private val viewMatrix = FloatArray(16)
@@ -134,6 +139,8 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
     var r13: FloatBuffer? = null
     var r11: FloatBuffer? = null
     var r5: Int = 0
+
+    private lateinit var figure: Figure
 
     fun setupGraphics(width: Int, height: Int) {
         vertexLocation = GLES32.glGetAttribLocation(mProgram, "vertexPosition")
@@ -178,7 +185,7 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         val finalNormals = mutableListOf<Float>()
         val faces = mutableListOf<Face>()
         val triangleWithIndices = mutableListOf<TriangleWithIndices>()
-        val figure = Figure()
+        figure = Figure()
 
         for (i in 0 until objs[0].numFaces) {
             val face = objs[0].getFace(i)
@@ -206,7 +213,7 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         }
 
         figure.calculateVertexNormals(points)
-        figure.tessellatePN()
+        figure.tessellatePN(tessellationLevel = 1)
 
         val r10 = figure.toVertexList().toFloatArray()
         r5 = r10.count()
@@ -307,6 +314,29 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         )
 
         setModelMatrix()
+    }
+
+    fun onSmoothingLevelChanged(smoothingLevel: Int) {
+        figure.tessellatePN(tessellationLevel = smoothingLevel)
+        val r10 = figure.toVertexList().toFloatArray()
+        r5 = r10.count()
+        val r12 = figure.toNormalList().toFloatArray()
+
+        val colors = FloatArray(3 * r5)
+        for (i in 0 until 3 * r5) {
+            colors[i] = color[i % color.size]
+        }
+
+        renderObject = RenderObject(
+            verticesArray = r10,
+            normalsArray = r12,
+            colorsArray = colors,
+            vertexPosition = vertexLocation,
+            colorPosition = vertexColourLocation,
+            program = mProgram
+        )
+
+        renderFrame2()
     }
 
     fun onScaleEvent(scaleFactor: Float) {
@@ -424,7 +454,7 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         val qewqwr = 0
     }
 
-    fun renderFrame2(obj: Obj) {
+    fun renderFrame2() {
         val modelView = FloatArray(16)
         val vPMatrix = FloatArray(16)
         Matrix.multiplyMM(modelView, 0, viewMatrix, 0, modelMatrix, 0)
@@ -454,7 +484,7 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
 
 //        GLES32.glLineWidth(15f)
 //        GLES32.glLineWidth(1f)
-        objs.forEach(::renderFrame2)
+        objs.forEach { renderFrame2() }
 //        objs.forEach(::renderFrame)
 
 //        angle += 1

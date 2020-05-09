@@ -29,6 +29,10 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
         triangle123.onScrollEvent(event.dx, event.dy)
     }
 
+    fun onSmoothingLevelChanged(smoothingLevel: Int) {
+        triangle123.onSmoothingLevelChanged(smoothingLevel)
+    }
+
     fun onScaleEvent(scaleFactor: Float) {
         triangle123.onScaleEvent(scaleFactor)
     }
