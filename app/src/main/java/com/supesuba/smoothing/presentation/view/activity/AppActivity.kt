@@ -10,8 +10,8 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentTransaction
 import com.supesuba.navigation.ui.BaseFragment
 import com.supesuba.smoothing.R
-import com.supesuba.smoothing.presentation.viewmodel.AppViewModel
-import com.supesuba.smoothing.presentation.viewmodel.AppViewState
+import com.supesuba.smoothing.presentation.viewmodel.app.AppViewModel
+import com.supesuba.smoothing.presentation.viewmodel.app.AppViewState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.collect

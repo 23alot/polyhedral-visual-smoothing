@@ -157,9 +157,9 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         GLES32.glCullFace(GLES32.GL_FRONT)
         val p4 = GLES32.glGetError()
 //        GLES32.glFrontFace(GLES32.GL_CCW)
-        val obj = runBlocking { shaderRepository.test2() }
+//        val obj = runBlocking { shaderRepository.getModelObj() }
 //        obj = ObjUtils.makeVertexIndexed(obj)
-        objs = ObjSplitting.splitByMaxNumVertices(obj, 65000)
+//        objs = ObjSplitting.splitByMaxNumVertices(obj, 65000)
         objs = objs.map { ob ->
 //            val a2 = ObjUtils.makeVertexIndexed(ob)
             val a3 = ObjUtils.triangulate(ob)
@@ -221,7 +221,7 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
             .order(ByteOrder.nativeOrder()).asFloatBuffer()
         r11?.put(r10)
 
-        val r123 = ObjData.getNormalsArray(obj)
+//        val r123 = ObjData.getNormalsArray(obj)
         val r12 = figure.toNormalList().toFloatArray()
         r13 = ByteBuffer.allocateDirect(r12.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer()

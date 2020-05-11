@@ -10,7 +10,11 @@ class AppRouter(
 ) {
 
     fun openMainScreen() {
-        router.newRootScreen(Screens.Main)
+        router.newRootScreen(Screens.Import)
+    }
+
+    fun openPNSmoothing() {
+        router.navigateTo(Screens.SmoothingPN)
     }
 
     fun onBack() {

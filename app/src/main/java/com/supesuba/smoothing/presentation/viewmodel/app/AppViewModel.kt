@@ -1,4 +1,4 @@
-package com.supesuba.smoothing.presentation.viewmodel
+package com.supesuba.smoothing.presentation.viewmodel.app
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
