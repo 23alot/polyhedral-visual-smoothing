@@ -1,4 +1,4 @@
-package com.supesuba.smoothing.trash
+package com.supesuba.smoothing.presentation.renderer
 
 import android.opengl.GLES32
 import java.nio.ByteBuffer

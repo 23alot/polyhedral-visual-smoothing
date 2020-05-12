@@ -3,12 +3,9 @@ package com.supesuba.smoothing.presentation.renderer
 import android.opengl.GLES32
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
-import android.util.Log
 import com.supesuba.smoothing.*
 import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.model.repository.ShaderRepository
-import com.supesuba.smoothing.trash.RenderObject
-import com.supesuba.smoothing.trash.TriangleWithIndices
 import de.javagl.obj.ObjData
 import de.javagl.obj.ObjSplitting
 import de.javagl.obj.ObjUtils
@@ -193,7 +190,6 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
 
         val r4 = ObjData.getVerticesArray(objs[0])
         val points = r4.toVertexList()
-        val triangleWithIndices = mutableListOf<TriangleWithIndices>()
         figure = Figure()
 
         for (i in 0 until objs[0].numFaces) {
@@ -213,9 +209,6 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
             )
 
             figure.addTriangle(t)
-
-            // Сохраняем треугольники с индексами вершин для вычисления нормалей к вершинам
-            triangleWithIndices += TriangleWithIndices(indices = l)
         }
 
         figure.calculateVertexNormals(points)
