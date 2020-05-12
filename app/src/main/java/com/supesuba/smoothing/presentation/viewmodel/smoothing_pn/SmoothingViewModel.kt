@@ -1,9 +1,11 @@
-package com.supesuba.smoothing.presentation.viewmodel.import_model
+package com.supesuba.smoothing.presentation.viewmodel.smoothing_pn
 
 import androidx.lifecycle.ViewModel
 import com.supesuba.smoothing.di.Test
 import com.supesuba.smoothing.domain.ModelInteractor
-import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportPartialViewState
+import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportPartialViewStates
+import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewState
 import com.supesuba.smoothing.router.AppRouter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,9 +17,10 @@ import kotlinx.coroutines.flow.scan
 /**
  * Created by 23alot on 11.05.2020.
  */
-class ImportViewModel constructor(
+class SmoothingViewModel constructor(
     private val router: AppRouter,
-    private val modelInteractor: ModelInteractor
+    private val modelInteractor: ModelInteractor,
+    private val test: Test
 ) : ViewModel() {
     @ExperimentalCoroutinesApi
     private val stateFlow = MutableStateFlow<ImportPartialViewState>(ImportPartialViewStates.init())
@@ -34,14 +37,6 @@ class ImportViewModel constructor(
         when (event) {
             is ModelInteractor.ModelEvent.Models -> stateFlow.value = ImportPartialViewStates.loaded(event.models)
         }
-    }
-
-    fun onPNSelected(modelInfo: ModelInfo) {
-        router.openPNSmoothing(modelInfo)
-    }
-
-    fun onPhongSelected(modelInfo: ModelInfo) {
-        router.openPNSmoothing(modelInfo)
     }
 
     fun onBack() {

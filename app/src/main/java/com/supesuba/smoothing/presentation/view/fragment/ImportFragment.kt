@@ -2,17 +2,16 @@ package com.supesuba.smoothing.presentation.view.fragment
 
 import android.content.Context
 import android.content.Intent
-import android.opengl.GLSurfaceView
 import android.os.Bundle
-import android.os.Environment
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.SeekBar
+import android.widget.ArrayAdapter
+import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.supesuba.navigation.ui.BaseFragment
 import com.supesuba.smoothing.R
+import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.presentation.view.adapter.ModelAdapter
 import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewModel
 import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewState
@@ -22,19 +21,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import org.koin.android.ext.android.inject
+import org.koin.android.viewmodel.ext.android.viewModel
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 
 
 /**
  * Created by 23alot on 09.03.2020.
  */
-class ImportFragment : BaseFragment() {
+class ImportFragment : BaseFragment(), ModelAdapter.OnModelClickListener {
     override val layoutRes: Int = 0
 
-    private val model: ImportViewModel by inject()
+    private val model: ImportViewModel by viewModel()
 
     private lateinit var modelAdapter: ModelAdapter
 
@@ -61,6 +59,7 @@ class ImportFragment : BaseFragment() {
         modelAdapter = ModelAdapter()
         modelsRV.layoutManager = LinearLayoutManager(requireContext())
         modelsRV.adapter = modelAdapter
+        modelAdapter.listener = this
         GlobalScope.launch(Dispatchers.Main) {
             model.state
                 .collect { updateState(it) }
@@ -76,9 +75,23 @@ class ImportFragment : BaseFragment() {
         modelAdapter.setItems(state.models)
     }
 
+
+    override fun onModelSelected(modelInfo: ModelInfo) {
+        val adapter = ArrayAdapter<String>(requireContext(), R.layout.item_algorithm, arrayOf("PN", "Phong"))
+        AlertDialog.Builder(requireContext())
+            .setAdapter(adapter) { _, b ->
+                when(b) {
+                    0 -> model.onPNSelected(modelInfo)
+                    1 -> model.onPhongSelected(modelInfo)
+                }
+            }
+            .create().show()
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
+        // TODO: проверка request и result code
         val a = File(data?.data?.encodedPath)
 
         val dir = requireContext().getDir("models", Context.MODE_PRIVATE)
@@ -94,5 +107,14 @@ class ImportFragment : BaseFragment() {
                 }
             }
         }
+
+        GlobalScope.launch(Dispatchers.Main) {
+            model.onCreate()
+        }
+    }
+
+    companion object {
+
+        fun newInstance(): ImportFragment = ImportFragment()
     }
 }

@@ -10,7 +10,12 @@ import kotlinx.android.synthetic.main.item_model.view.*
 
 class ModelAdapter : RecyclerView.Adapter<ModelAdapter.ActivitiesViewHolder>() {
 
+    interface OnModelClickListener {
+        fun onModelSelected(modelInfo: ModelInfo)
+    }
+
     private var items: List<ModelInfo> = listOf()
+    var listener: OnModelClickListener? = null
 
     fun setItems(items: List<ModelInfo>) {
         this.items = items
@@ -35,6 +40,7 @@ class ModelAdapter : RecyclerView.Adapter<ModelAdapter.ActivitiesViewHolder>() {
 
         fun bind(data: ModelInfo) {
             view.modelItemTV.text = data.name
+            view.setOnClickListener { listener?.onModelSelected(data) }
         }
 
     }

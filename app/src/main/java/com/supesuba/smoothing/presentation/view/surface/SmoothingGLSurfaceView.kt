@@ -7,10 +7,12 @@ import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
+import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.model.repository.ShaderRepository
 import com.supesuba.smoothing.presentation.renderer.ScrollEvent
 import com.supesuba.smoothing.presentation.renderer.SmoothingGLRenderer
-import org.koin.core.context.GlobalContext.get
+import org.koin.core.context.KoinContextHandler.get
+import org.koin.experimental.property.inject
 import kotlin.math.max
 import kotlin.math.min
 
@@ -23,7 +25,7 @@ class SmoothingGLSurfaceView(
 ) : GLSurfaceView(context, attributeSet) {
 
     private val renderer: SmoothingGLRenderer
-    private val shaderRepository: ShaderRepository by get().koin.inject()
+    private val shaderRepository: ShaderRepository by get().inject()
     private val gestureDetector = GestureDetector(context, GestureListener())
     private val scaleGestureDetector = ScaleGestureDetector(context, GestureListener())
 
@@ -48,6 +50,10 @@ class SmoothingGLSurfaceView(
 
     fun onSmoothingLevelChanged(smoothingLevel: Int) {
         renderer.onSmoothingLevelChanged(smoothingLevel)
+    }
+
+    fun onLoadModel(model: ModelInfo) {
+        renderer.onModelLoad(model)
     }
 
     private inner class GestureListener : GestureDetector.SimpleOnGestureListener(), ScaleGestureDetector.OnScaleGestureListener {

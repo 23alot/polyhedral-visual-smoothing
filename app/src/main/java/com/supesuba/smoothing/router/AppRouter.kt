@@ -1,5 +1,7 @@
 package com.supesuba.smoothing.router
 
+import android.net.Uri
+import com.supesuba.smoothing.model.repository.ModelInfo
 import ru.terrakok.cicerone.Router
 
 /**
@@ -13,8 +15,12 @@ class AppRouter(
         router.newRootScreen(Screens.Import)
     }
 
-    fun openPNSmoothing() {
-        router.navigateTo(Screens.SmoothingPN)
+    fun openPNSmoothing(modelInfo: ModelInfo) {
+        router.navigateTo(Screens.SmoothingPN(model = modelInfo))
+    }
+
+    fun openPhong(modelInfo: ModelInfo) {
+        router.navigateTo(Screens.SmoothingPN(model = modelInfo))
     }
 
     fun onBack() {

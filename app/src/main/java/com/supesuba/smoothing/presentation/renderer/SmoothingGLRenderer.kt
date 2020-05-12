@@ -2,6 +2,7 @@ package com.supesuba.smoothing.presentation.renderer
 
 import android.opengl.GLSurfaceView
 import android.util.Log
+import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.model.repository.ShaderRepository
 import com.supesuba.smoothing.presentation.view.Triangle123
 import javax.microedition.khronos.egl.EGLConfig
@@ -35,6 +36,10 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
 
     fun onScaleEvent(scaleFactor: Float) {
         triangle123.onScaleEvent(scaleFactor)
+    }
+
+    fun onModelLoad(model: ModelInfo) {
+        triangle123.onLoadModel(model)
     }
 }
 

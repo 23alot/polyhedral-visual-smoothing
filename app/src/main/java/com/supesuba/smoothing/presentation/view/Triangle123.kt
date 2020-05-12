@@ -6,6 +6,7 @@ import com.supesuba.smoothing.Figure
 import com.supesuba.smoothing.R
 import com.supesuba.smoothing.Triangle
 import com.supesuba.smoothing.Vertex
+import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.model.repository.ShaderRepository
 import com.supesuba.smoothing.trash.RenderObject
 import com.supesuba.smoothing.trash.TriangleWithIndices
@@ -157,9 +158,38 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         GLES32.glCullFace(GLES32.GL_FRONT)
         val p4 = GLES32.glGetError()
 //        GLES32.glFrontFace(GLES32.GL_CCW)
-//        val obj = runBlocking { shaderRepository.getModelObj() }
-//        obj = ObjUtils.makeVertexIndexed(obj)
-//        objs = ObjSplitting.splitByMaxNumVertices(obj, 65000)
+
+
+
+        createProjectionMatrix(width, height)
+        createViewMatrix()
+
+    }
+
+
+    private fun createProjectionMatrix(width: Int, height: Int) {
+        var ratio = 1f
+        var left = -1f
+        var right = 1f
+        var bottom = -1f
+        var top = 1f
+        val near = 2f
+        val far = 10f
+        if (width > height) {
+            ratio = width.toFloat() / height
+            left *= ratio
+            right *= ratio
+        } else {
+            ratio = height.toFloat() / width
+            bottom *= ratio
+            top *= ratio
+        }
+        Matrix.frustumM(projectionMatrix, 0, left, right, bottom, top, near, far)
+    }
+
+    fun onLoadModel(modelInfo: ModelInfo) {
+        val obj = runBlocking { shaderRepository.getModelObj(modelInfo) }
+        objs = ObjSplitting.splitByMaxNumVertices(obj, 65000)
         objs = objs.map { ob ->
 //            val a2 = ObjUtils.makeVertexIndexed(ob)
             val a3 = ObjUtils.triangulate(ob)
@@ -167,11 +197,6 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
             val a5 = ObjUtils.convertToRenderable(a4)
             return@map a5
         }
-
-
-
-        createProjectionMatrix(width, height)
-        createViewMatrix()
 
 
         val r4 = ObjData.getVerticesArray(objs[0])
@@ -244,27 +269,6 @@ class Triangle123(private val shaderRepository: ShaderRepository) {
         b = ByteBuffer.allocateDirect(colors.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer()
         b?.put(colors)
-    }
-
-
-    private fun createProjectionMatrix(width: Int, height: Int) {
-        var ratio = 1f
-        var left = -1f
-        var right = 1f
-        var bottom = -1f
-        var top = 1f
-        val near = 2f
-        val far = 10f
-        if (width > height) {
-            ratio = width.toFloat() / height
-            left *= ratio
-            right *= ratio
-        } else {
-            ratio = height.toFloat() / width
-            bottom *= ratio
-            top *= ratio
-        }
-        Matrix.frustumM(projectionMatrix, 0, left, right, bottom, top, near, far)
     }
 
     data class EyePosition(
