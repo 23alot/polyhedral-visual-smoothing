@@ -10,6 +10,7 @@ import com.supesuba.navigation.ui.BaseFragment
 import com.supesuba.smoothing.R
 import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewModel
+import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewState
 import com.supesuba.smoothing.presentation.viewmodel.smoothing_pn.SmoothingViewModel
 import kotlinx.android.synthetic.main.fragment_smoothing_pn.*
 import org.koin.android.viewmodel.ext.android.viewModel
@@ -50,8 +51,13 @@ class SmoothingPNFragment : BaseFragment() {
         })
 
 
-        val model = arguments?.getParcelable<ModelInfo>(MODEL)
-        loadModel(model!!)
+        val modelInfo = arguments?.getParcelable<ModelInfo>(MODEL)
+        loadModel(modelInfo!!)
+        model.subscribe { state -> showState(state) }
+    }
+
+    private fun showState(state: ImportViewState) {
+
     }
 
     fun loadModel(model: ModelInfo) {

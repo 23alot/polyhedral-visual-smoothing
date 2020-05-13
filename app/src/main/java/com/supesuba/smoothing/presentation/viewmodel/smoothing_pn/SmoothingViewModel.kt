@@ -17,6 +17,7 @@ import com.supesuba.smoothing.toVertexList
 import de.javagl.obj.Obj
 import de.javagl.obj.ObjData
 import de.javagl.obj.ObjUtils
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -40,10 +41,11 @@ class SmoothingViewModel constructor(
         .distinctUntilChanged()
         .flowOn(Dispatchers.IO)
 
-    fun a() {
+    fun subscribe(block: suspend CoroutineScope.(ImportViewState) -> Unit) {
         // TODO: вынести из Fragment запуски
         viewModelScope.launch {
 
+//            block.invoke(this, )
         }
     }
 
