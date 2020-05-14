@@ -18,7 +18,7 @@ import org.koin.experimental.builder.singleBy
  */
 val mainModule = module {
     single { AppRouter(get()) }
-    single { ModelInteractor(get()) }
+    single { ModelInteractor(get(), get()) }
     viewModel { AppViewModel(get()) }
     single(PNTriangle) { Test(5) }
     single(PhongTessellation) { Test(7) }

@@ -49,11 +49,11 @@ class SmoothingGLSurfaceView(
     }
 
     fun onSmoothingLevelChanged(smoothingLevel: Int) {
-        renderer.onSmoothingLevelChanged(smoothingLevel)
+//        renderer.onSmoothingLevelChanged(smoothingLevel)
     }
 
     fun onLoadModel(model: ModelInfo) {
-        renderer.onModelLoad(model)
+//        renderer.onModelLoad(model)
     }
 
     private inner class GestureListener : GestureDetector.SimpleOnGestureListener(), ScaleGestureDetector.OnScaleGestureListener {
