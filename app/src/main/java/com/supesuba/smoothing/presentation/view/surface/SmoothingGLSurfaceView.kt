@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
+import com.supesuba.smoothing.RenderObject
 import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.model.repository.ShaderRepository
 import com.supesuba.smoothing.presentation.renderer.ScrollEvent
@@ -48,12 +49,8 @@ class SmoothingGLSurfaceView(
         return result || super.onTouchEvent(event)
     }
 
-    fun onSmoothingLevelChanged(smoothingLevel: Int) {
-//        renderer.onSmoothingLevelChanged(smoothingLevel)
-    }
-
-    fun onLoadModel(model: ModelInfo) {
-//        renderer.onModelLoad(model)
+    fun onReadyToRender(renderObject: RenderObject) {
+        renderer.setRenderObject(renderObject)
     }
 
     private inner class GestureListener : GestureDetector.SimpleOnGestureListener(), ScaleGestureDetector.OnScaleGestureListener {

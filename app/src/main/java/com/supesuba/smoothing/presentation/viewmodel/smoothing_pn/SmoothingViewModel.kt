@@ -31,28 +31,22 @@ class SmoothingViewModel constructor(
     private val modelInteractor: ModelInteractor,
     private val smoothingInteractor: SmoothingInteractor
 ) : ViewModel() {
-    @ExperimentalCoroutinesApi
-    private val stateFlow = MutableStateFlow<ImportPartialViewState>(ImportPartialViewStates.init())
 
-
-    @ExperimentalCoroutinesApi
-    val state = stateFlow
-        .scan(ImportViewState()) { state, partial -> partial(state) }
-        .distinctUntilChanged()
-        .flowOn(Dispatchers.IO)
-
-    fun subscribe(block: suspend CoroutineScope.(ImportViewState) -> Unit) {
-        // TODO: вынести из Fragment запуски
+    fun subscribe(block: suspend CoroutineScope.(SmoothingViewState) -> Unit) {
         viewModelScope.launch {
-
-//            block.invoke(this, )
+            smoothingInteractor.observeModelChanges()
+                .flowOn(Dispatchers.Main)
+                .map { renderObject -> SmoothingViewState(renderObject) }
+                .collect { block(this, it) }
         }
     }
 
-    suspend fun onCreate(modelInfo: ModelInfo) {
-        val event = modelInteractor.loadModel(modelInfo)
-        when (event) {
-            is ModelInteractor.ModelEvent.Models -> stateFlow.value = ImportPartialViewStates.loaded(event.models)
+    fun onCreate(modelInfo: ModelInfo) {
+        viewModelScope.launch {
+            val event = modelInteractor.loadModel(modelInfo)
+            when (event) {
+                is ModelInteractor.ModelEvent.ObjLoaded -> onObjLoaded(event.obj)
+            }
         }
     }
 
@@ -83,16 +77,14 @@ class SmoothingViewModel constructor(
         }
 
         smoothingInteractor.calculateVertexNormals(vertices = points)
-
-        (smoothingInteractor.observeModelChanges() as Flow<RenderObject>)
-            .flowOn(Dispatchers.Main)
-            .collect(
-                // TODO: отрисовать полученное
-            )
+        smoothingInteractor.calculateSupportPoints()
     }
 
-    suspend fun onTessellationLevelChanged(tessellationLevel: Int) {
-        smoothingInteractor.tessellate(tessellationLevel)
+    fun onTessellationLevelChanged(tessellationLevel: Int) {
+        viewModelScope.launch {
+            smoothingInteractor.tessellate(tessellationLevel)
+        }
+
     }
 
     fun onBack() {

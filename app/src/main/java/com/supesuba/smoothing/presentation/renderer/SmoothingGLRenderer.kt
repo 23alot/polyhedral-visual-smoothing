@@ -35,6 +35,8 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
 
     private var mProgram: Int = 0
 
+    private var renderObject: RenderObject? = null
+
     override fun onSurfaceCreated(unused: GL10, config: EGLConfig) {
         val vertexShader: Int = runBlocking { shaderRepository.loadShader(GLES32.GL_VERTEX_SHADER, R.raw.vertex_shader) }
         val fragmentShader: Int = runBlocking { shaderRepository.loadShader(GLES32.GL_FRAGMENT_SHADER, R.raw.fragment_shader) }
@@ -54,7 +56,9 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
     }
 
     override fun onDrawFrame(unused: GL10) {
-        // Do nothing
+        renderObject?.let {
+            renderFrame(it)
+        }
     }
 
     override fun onSurfaceChanged(unused: GL10, width: Int, height: Int) {
@@ -62,15 +66,9 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
         vertexColourLocation = GLES32.glGetAttribLocation(mProgram, "vertexColour")
         GLES32.glViewport(0, 0, width, height)
         GLES32.glUseProgram(mProgram)
-        val p = GLES32.glGetError()
         GLES32.glDisable(GLES32.GL_DITHER)
-        val p2 = GLES32.glGetError()
         GLES32.glEnable(GLES32.GL_CULL_FACE)
-        val p3 = GLES32.glGetError()
         GLES32.glCullFace(GLES32.GL_FRONT)
-        val p4 = GLES32.glGetError()
-
-
 
         createProjectionMatrix(width, height)
         createViewMatrix()
@@ -148,7 +146,11 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
         )
     }
 
-    fun renderFrame(renderObject: RenderObject) {
+    fun setRenderObject(renderObject: RenderObject) {
+        this.renderObject = renderObject
+    }
+
+    private fun renderFrame(renderObject: RenderObject) {
         GLES32.glClearColor(0.5f, 0.5f, 0.5f, 1.0f)
         GLES32.glClear(GLES32.GL_DEPTH_BUFFER_BIT or GLES32.GL_COLOR_BUFFER_BIT)
         setModelMatrix()
@@ -183,6 +185,9 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
 
 
         GLES32.glDrawArrays(GLES32.GL_TRIANGLES, 0, renderObject.verticesArray.count() / 3)
+
+        val a = GLES32.glGetError()
+        val b = 0
         GLES32.glFlush()
     }
 }

@@ -12,10 +12,12 @@ import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewModel
 import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewState
 import com.supesuba.smoothing.presentation.viewmodel.smoothing_pn.SmoothingViewModel
+import com.supesuba.smoothing.presentation.viewmodel.smoothing_pn.SmoothingViewState
 import kotlinx.android.synthetic.main.fragment_smoothing_pn.*
 import org.koin.android.viewmodel.ext.android.viewModel
 import org.koin.core.parameter.parametersOf
 import org.koin.core.qualifier.StringQualifier
+import org.koin.core.qualifier.named
 
 
 /**
@@ -24,7 +26,7 @@ import org.koin.core.qualifier.StringQualifier
 class SmoothingPNFragment : BaseFragment() {
     override val layoutRes: Int = 0
 
-    private val model: SmoothingViewModel by viewModel { parametersOf(arguments?.getString(QUALIFIER) ?: throw IllegalArgumentException("No smoothing algorithm provided")) }
+    private val model: SmoothingViewModel by viewModel { parametersOf(named(arguments?.getString(QUALIFIER)!!) ?: throw IllegalArgumentException("No smoothing algorithm provided")) }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -46,31 +48,26 @@ class SmoothingPNFragment : BaseFragment() {
             }
 
             override fun onStopTrackingTouch(p0: SeekBar?) {
-                renderView.onSmoothingLevelChanged(p0?.progress ?: 1)
+                model.onTessellationLevelChanged(p0?.progress ?: 1)
             }
         })
 
-
         val modelInfo = arguments?.getParcelable<ModelInfo>(MODEL)
-        loadModel(modelInfo!!)
+        model.onCreate(modelInfo!!)
         model.subscribe { state -> showState(state) }
     }
 
-    private fun showState(state: ImportViewState) {
-
-    }
-
-    fun loadModel(model: ModelInfo) {
-        renderView.onLoadModel(model)
+    private fun showState(state: SmoothingViewState) {
+        renderView.onReadyToRender(state.renderObject)
     }
 
     override fun onResume() {
         super.onResume()
-        renderView.onResume()
+//        renderView.onResume()
     }
 
     override fun onPause() {
-        renderView.onPause()
+//        renderView.onPause()
         super.onPause()
     }
 
