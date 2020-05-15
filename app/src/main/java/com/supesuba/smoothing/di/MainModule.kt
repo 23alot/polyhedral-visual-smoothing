@@ -2,6 +2,7 @@ package com.supesuba.smoothing.di
 
 import com.supesuba.smoothing.domain.ModelInteractor
 import com.supesuba.smoothing.domain.PNTriangleSmoothingInteractor
+import com.supesuba.smoothing.domain.PhongSmoothingInteractor
 import com.supesuba.smoothing.domain.SmoothingInteractor
 import com.supesuba.smoothing.model.repository.AndroidModelRepository
 import com.supesuba.smoothing.model.repository.AndroidShaderRepository
@@ -23,14 +24,10 @@ val mainModule = module {
     single { AppRouter(get()) }
     single { ModelInteractor(get(), get()) }
     viewModel { AppViewModel(get()) }
-    singleBy<SmoothingInteractor, PNTriangleSmoothingInteractor>(PhongTessellation)
+    singleBy<SmoothingInteractor, PhongSmoothingInteractor>(PhongTessellation)
     singleBy<SmoothingInteractor, PNTriangleSmoothingInteractor>(PNTriangle)
     viewModel { ImportViewModel(get(), get()) }
     viewModel { (algo: StringQualifier) -> SmoothingViewModel(get(), get(), get(algo)) }
     singleBy<ShaderRepository, AndroidShaderRepository>()
     singleBy<ModelRepository, AndroidModelRepository>()
 }
-
-data class Test(
-    val a: Int
-)

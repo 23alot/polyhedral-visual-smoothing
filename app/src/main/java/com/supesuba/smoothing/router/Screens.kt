@@ -2,6 +2,7 @@ package com.supesuba.smoothing.router
 
 import androidx.fragment.app.Fragment
 import com.supesuba.smoothing.di.PNTriangle
+import com.supesuba.smoothing.di.PhongTessellation
 import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.presentation.view.fragment.ImportFragment
 import com.supesuba.smoothing.presentation.view.fragment.SmoothingPNFragment
@@ -15,6 +16,12 @@ object Screens {
         private val model: ModelInfo
     ): SupportAppScreen() {
         override fun getFragment(): Fragment = SmoothingPNFragment.newInstance(model, PNTriangle)
+    }
+
+    data class PhongTessellation(
+        private val model: ModelInfo
+    ): SupportAppScreen() {
+        override fun getFragment(): Fragment = SmoothingPNFragment.newInstance(model, PhongTessellation)
     }
 
     object Import: SupportAppScreen() {

@@ -20,7 +20,7 @@ class AppRouter(
     }
 
     fun openPhong(modelInfo: ModelInfo) {
-        router.navigateTo(Screens.SmoothingPN(model = modelInfo))
+        router.navigateTo(Screens.PhongTessellation(model = modelInfo))
     }
 
     fun onBack() {

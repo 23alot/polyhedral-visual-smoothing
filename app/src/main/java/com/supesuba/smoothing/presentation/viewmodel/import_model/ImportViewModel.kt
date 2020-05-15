@@ -1,7 +1,6 @@
 package com.supesuba.smoothing.presentation.viewmodel.import_model
 
 import androidx.lifecycle.ViewModel
-import com.supesuba.smoothing.di.Test
 import com.supesuba.smoothing.domain.ModelInteractor
 import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.router.AppRouter
@@ -41,7 +40,7 @@ class ImportViewModel constructor(
     }
 
     fun onPhongSelected(modelInfo: ModelInfo) {
-        router.openPNSmoothing(modelInfo)
+        router.openPhong(modelInfo)
     }
 
     fun onBack() {

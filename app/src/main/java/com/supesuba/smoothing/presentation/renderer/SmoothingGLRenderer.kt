@@ -185,9 +185,6 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
 
 
         GLES32.glDrawArrays(GLES32.GL_TRIANGLES, 0, renderObject.verticesArray.count() / 3)
-
-        val a = GLES32.glGetError()
-        val b = 0
         GLES32.glFlush()
     }
 }

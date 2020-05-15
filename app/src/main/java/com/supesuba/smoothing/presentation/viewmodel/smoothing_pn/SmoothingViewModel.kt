@@ -2,16 +2,11 @@ package com.supesuba.smoothing.presentation.viewmodel.smoothing_pn
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.supesuba.smoothing.RenderObject
 import com.supesuba.smoothing.Triangle
 import com.supesuba.smoothing.Vertex
-import com.supesuba.smoothing.di.Test
 import com.supesuba.smoothing.domain.ModelInteractor
 import com.supesuba.smoothing.domain.SmoothingInteractor
 import com.supesuba.smoothing.model.repository.ModelInfo
-import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportPartialViewState
-import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportPartialViewStates
-import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewState
 import com.supesuba.smoothing.router.AppRouter
 import com.supesuba.smoothing.toVertexList
 import de.javagl.obj.Obj
@@ -19,8 +14,9 @@ import de.javagl.obj.ObjData
 import de.javagl.obj.ObjUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
