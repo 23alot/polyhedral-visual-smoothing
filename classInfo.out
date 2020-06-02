@@ -1,0 +1,2151 @@
+_#subkey
+Класс App
+
+package com.supesuba.smoothing
+
+import android.app.Application
+import com.supesuba.smoothing.di.KoinInitializer
+import org.koin.core.KoinApplication
+
+/**
+ * Created by 23alot on 08.03.2020.
+ */
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        KoinInitializer.init(this@App)
+
+//        AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_NO)
+    }
+}
+
+
+_#subkey
+Класс KoinInitializer
+
+package com.supesuba.smoothing.di
+
+import android.content.Context
+import com.supesuba.navigation.di.navigationModule
+import org.koin.android.ext.koin.androidContext
+import org.koin.core.context.startKoin
+
+/**
+ * Created by 23alot on 08.03.2020.
+ */
+object KoinInitializer {
+
+    fun init(context: Context) {
+        startKoin {
+            androidContext(context)
+            modules(
+                listOf(
+                    mainModule,
+                    navigationModule
+                )
+            )
+        }
+    }
+
+}
+
+
+_#subkey
+Класс AppInteractor
+
+package com.supesuba.smoothing.domain
+
+/**
+ * Created by 23alot on 08.03.2020.
+ */
+class AppInteractor {
+}
+
+
+_#subkey
+Класс ModelInteractor
+
+package com.supesuba.smoothing.domain
+
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.model.repository.ModelRepository
+import com.supesuba.smoothing.model.repository.ShaderRepository
+import de.javagl.obj.Obj
+
+class ModelInteractor(
+    private val modelRepository: ModelRepository,
+    private val shaderRepository: ShaderRepository
+) {
+    sealed class ModelEvent {
+        data class Models(
+            val models: List<ModelInfo>
+        ): ModelEvent()
+
+        data class ObjLoaded(
+            val obj: Obj
+        ): ModelEvent()
+
+        data class Error(val throwable: Throwable): ModelEvent()
+    }
+
+    suspend fun getModels(): ModelEvent {
+        return kotlin.runCatching {
+            val models = modelRepository.getModels()
+            ModelEvent.Models(
+                models = models
+            )
+        }.getOrElse(ModelEvent::Error)
+    }
+
+    suspend fun loadModel(modelInfo: ModelInfo): ModelEvent = kotlin.runCatching {
+            return@runCatching ModelEvent.ObjLoaded(
+                obj = shaderRepository.getModelObj(modelInfo = modelInfo)
+            )
+        }.getOrElse(ModelEvent::Error)
+}
+
+
+_#subkey
+Класс AndroidModelRepository
+
+package com.supesuba.smoothing.model.repository
+
+import android.content.Context
+import androidx.core.net.toUri
+import com.supesuba.utils.common.fileName
+
+class AndroidModelRepository(
+    private val context: Context
+) : ModelRepository {
+
+    override suspend fun getModels(): List<ModelInfo> {
+        val dir = context.getDir(MODELS_FOLDER, Context.MODE_PRIVATE)
+        return dir.listFiles()?.mapNotNull { modelFile ->
+            val name = modelFile.path.fileName()
+            ModelInfo(
+                name = name,
+                id = name.hashCode().toLong(),
+                uri = modelFile.toUri()
+            )
+        } ?: throw NoModels
+    }
+
+    companion object {
+        private const val MODELS_FOLDER = "models"
+    }
+
+    object NoModels : Throwable()
+}
+
+
+_#subkey
+Класс AndroidShaderRepository
+
+package com.supesuba.smoothing.model.repository
+
+import android.content.Context
+import com.supesuba.utils.shader.ShaderUtils
+import de.javagl.obj.Obj
+import de.javagl.obj.ObjReader
+
+class AndroidShaderRepository(private val context: Context) : ShaderRepository {
+
+    override suspend fun loadShader(type: Int, shaderResId: Int): Int = ShaderUtils.createShader(context, type, shaderResId)
+
+    override suspend fun getModelObj(modelInfo: ModelInfo): Obj {
+        context.contentResolver.openInputStream(modelInfo.uri).use { modelInputStream ->
+            return ObjReader.read(modelInputStream)
+        }
+    }
+
+}
+
+
+_#subkey
+Интерфейс ModelRepository
+
+package com.supesuba.smoothing.model.repository
+
+import android.net.Uri
+import android.os.Parcelable
+import kotlinx.android.parcel.Parcelize
+
+interface ModelRepository {
+
+    suspend fun getModels(): List<ModelInfo>
+}
+
+@Parcelize
+data class ModelInfo(
+    val name: String,
+    val id: Long,
+    val uri: Uri
+): Parcelable
+
+
+_#subkey
+Интерфейс ShaderRepository
+
+package com.supesuba.smoothing.model.repository
+
+
+import de.javagl.obj.Obj
+
+interface ShaderRepository {
+
+    suspend fun loadShader(type: Int, shaderResId: Int): Int
+
+    suspend fun getModelObj(modelInfo: ModelInfo): Obj
+
+}
+
+
+_#subkey
+Класс SmoothingGLRenderer
+
+package com.supesuba.smoothing.presentation.renderer
+
+import android.opengl.GLES32
+import android.opengl.GLSurfaceView
+import android.opengl.Matrix
+import com.supesuba.smoothing.*
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.model.repository.ShaderRepository
+import de.javagl.obj.ObjData
+import de.javagl.obj.ObjSplitting
+import de.javagl.obj.ObjUtils
+import kotlinx.coroutines.runBlocking
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.opengles.GL10
+
+/**
+ * Created by 23alot on 09.03.2020.
+ */
+class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSurfaceView.Renderer {
+    private var vertexLocation = 0
+    private var vertexColourLocation = 0
+    private val viewMatrix = FloatArray(16)
+    private val projectionMatrix = FloatArray(16)
+    private val modelMatrix = FloatArray(16)
+
+    data class EyePosition(
+        val eyeX: Float = 0f, val eyeY: Float = 3f, val eyeZ: Float = 7f
+    )
+
+    private var eyePosition = EyePosition()
+    private var scaleFactor: Float = 1f
+
+    private var mProgram: Int = 0
+
+    private var renderObject: RenderObject? = null
+
+    override fun onSurfaceCreated(unused: GL10, config: EGLConfig) {
+        val vertexShader: Int = runBlocking { shaderRepository.loadShader(GLES32.GL_VERTEX_SHADER, R.raw.vertex_shader) }
+        val fragmentShader: Int = runBlocking { shaderRepository.loadShader(GLES32.GL_FRAGMENT_SHADER, R.raw.fragment_shader) }
+
+        // create empty OpenGL ES Program
+        mProgram = GLES32.glCreateProgram().also {
+
+            // add the vertex shader to program
+            GLES32.glAttachShader(it, vertexShader)
+
+            // add the fragment shader to program
+            GLES32.glAttachShader(it, fragmentShader)
+
+            // creates OpenGL ES program executables
+            GLES32.glLinkProgram(it)
+        }
+    }
+
+    override fun onDrawFrame(unused: GL10) {
+        renderObject?.let {
+            renderFrame(it)
+        }
+    }
+
+    override fun onSurfaceChanged(unused: GL10, width: Int, height: Int) {
+        vertexLocation = GLES32.glGetAttribLocation(mProgram, "vertexPosition")
+        vertexColourLocation = GLES32.glGetAttribLocation(mProgram, "vertexColour")
+        GLES32.glViewport(0, 0, width, height)
+        GLES32.glUseProgram(mProgram)
+//        GLES32.glDisable(GLES32.GL_DITHER)
+        GLES32.glEnable(GLES32.GL_CULL_FACE)
+        GLES32.glCullFace(GLES32.GL_FRONT)
+
+        createProjectionMatrix(width, height)
+        createViewMatrix()
+    }
+
+    private fun createProjectionMatrix(width: Int, height: Int) {
+        var ratio = 1f
+        var left = -1f
+        var right = 1f
+        var bottom = -1f
+        var top = 1f
+        val near = 2f
+        val far = 10f
+        if (width > height) {
+            ratio = width.toFloat() / height
+            left *= ratio
+            right *= ratio
+        } else {
+            ratio = height.toFloat() / width
+            bottom *= ratio
+            top *= ratio
+        }
+        Matrix.frustumM(projectionMatrix, 0, left, right, bottom, top, near, far)
+    }
+
+    fun onScrollEvent(event: ScrollEvent) {
+        eyePosition = EyePosition(
+            eyeX = eyePosition.eyeX + event.dx / 10,
+            eyeY = eyePosition.eyeY + event.dy / 10,
+            eyeZ = 0f
+        )
+
+        setModelMatrix()
+    }
+
+    fun onScaleEvent(scaleFactor: Float) {
+        this.scaleFactor = scaleFactor
+        setModelMatrix()
+    }
+
+    private fun setModelMatrix() {
+        Matrix.setIdentityM(modelMatrix, 0)
+        Matrix.rotateM(modelMatrix, 0, eyePosition.eyeY, 1f, 0f, 0f)
+        Matrix.rotateM(modelMatrix, 0, eyePosition.eyeX, 0f, 1f, 0f)
+        Matrix.scaleM(modelMatrix, 0, scaleFactor, scaleFactor, scaleFactor)
+    }
+
+    private fun createViewMatrix() {
+        // точка положения камеры
+        val eyeX = 0f
+        val eyeY = 3f
+        val eyeZ = 7f
+
+        // точка направления камеры
+        val centerX = 0f
+        val centerY = 0f
+        val centerZ = 0f
+
+        // up-вектор
+        val upX = 0f
+        val upY = 1f
+        val upZ = 0f
+        Matrix.setLookAtM(
+            viewMatrix,
+            0,
+            eyeX,
+            eyeY,
+            eyeZ,
+            centerX,
+            centerY,
+            centerZ,
+            upX,
+            upY,
+            upZ
+        )
+    }
+
+    fun setRenderObject(renderObject: RenderObject) {
+        this.renderObject = renderObject
+    }
+
+    private fun renderFrame(renderObject: RenderObject) {
+        GLES32.glClearColor(0.5f, 0.5f, 0.5f, 1.0f)
+        GLES32.glClear(GLES32.GL_DEPTH_BUFFER_BIT or GLES32.GL_COLOR_BUFFER_BIT)
+        setModelMatrix()
+        val modelView = FloatArray(16)
+        val vPMatrix = FloatArray(16)
+        Matrix.multiplyMM(modelView, 0, viewMatrix, 0, modelMatrix, 0)
+        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, modelView, 0)
+
+        GLES32.glGetUniformLocation(mProgram, "uMVPMatrix").also { matrix ->
+            GLES32.glUniformMatrix4fv(matrix, 1, false, vPMatrix, 0)
+        }
+        GLES32.glGetUniformLocation(mProgram, "modelView").also { matrix ->
+            GLES32.glUniformMatrix4fv(matrix, 1, false, modelView, 0)
+        }
+
+        val vBuffer = renderObject.verticesArray.toFloatBuffer()
+
+        val nBuffer = renderObject.normalsArray.toFloatBuffer()
+
+        val cBuffer = renderObject.colorsArray.toFloatBuffer()
+
+        GLES32.glGetAttribLocation(mProgram, "vertexNormal").also { normalPosition ->
+            GLES32.glVertexAttribPointer(normalPosition, 3, GLES32.GL_FLOAT, true, 0, nBuffer.position(0))
+            GLES32.glEnableVertexAttribArray(normalPosition)
+        }
+
+        GLES32.glEnableVertexAttribArray(vertexLocation)
+        GLES32.glVertexAttribPointer(vertexLocation, 3, GLES32.GL_FLOAT, false, 0, vBuffer.position(0))
+
+        GLES32.glEnableVertexAttribArray(vertexColourLocation)
+        GLES32.glVertexAttribPointer(vertexColourLocation, 3, GLES32.GL_FLOAT, false, 0, cBuffer.position(0))
+
+
+        GLES32.glDrawArrays(GLES32.GL_TRIANGLES, 0, renderObject.verticesArray.count() / 3)
+//        GLES32.glFlush()
+    }
+}
+
+fun FloatArray.toFloatBuffer(): FloatBuffer {
+    val buffer = ByteBuffer.allocateDirect(this.size * 4)
+        .order(ByteOrder.nativeOrder()).asFloatBuffer()
+    buffer.put(this)
+    return buffer
+}
+
+data class ScrollEvent(
+    val dx: Float,
+    val dy: Float
+)
+
+
+_#subkey
+Класс AppActivity
+
+package com.supesuba.smoothing.presentation.view.activity
+
+import android.graphics.Rect
+import android.os.Bundle
+import android.view.View
+import android.view.doOnApplyWindowInsets
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.updatePadding
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentTransaction
+import com.supesuba.navigation.ui.BaseFragment
+import com.supesuba.smoothing.R
+import com.supesuba.smoothing.presentation.viewmodel.app.AppViewModel
+import com.supesuba.smoothing.presentation.viewmodel.app.AppViewState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
+import ru.terrakok.cicerone.Navigator
+import ru.terrakok.cicerone.NavigatorHolder
+import ru.terrakok.cicerone.android.support.SupportAppNavigator
+import ru.terrakok.cicerone.commands.Command
+
+/**
+ * Created by 23alot on 08.03.2020.
+ */
+class AppActivity : AppCompatActivity() {
+    private val navigatorHolder: NavigatorHolder by inject()
+    private val model: AppViewModel by inject()
+
+    private val navigator: Navigator =
+        object : SupportAppNavigator(this, supportFragmentManager, R.id.container) {
+            override fun setupFragmentTransaction(
+                command: Command?,
+                currentFragment: Fragment?,
+                nextFragment: Fragment?,
+                fragmentTransaction: FragmentTransaction
+            ) {
+                // Fix incorrect order lifecycle callback of MainFragment
+                fragmentTransaction.setReorderingAllowed(true)
+            }
+        }
+
+    private val currentFragment: BaseFragment?
+    get() = supportFragmentManager.findFragmentById(R.id.container) as? BaseFragment
+
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        findViewById<View>(R.id.container).doOnApplyWindowInsets { view, insets, initialPadding ->
+            view.updatePadding(
+                left = initialPadding.left + insets.systemWindowInsetLeft,
+                right = initialPadding.right + insets.systemWindowInsetRight
+            )
+            insets.replaceSystemWindowInsets(
+                Rect(
+                    0,
+                    insets.systemWindowInsetTop,
+                    0,
+                    insets.systemWindowInsetBottom
+                )
+            )
+        }
+
+        GlobalScope.launch(Dispatchers.Main) {
+            model.state
+                .collect { updateState(it) }
+        }
+
+        model.onCreate()
+
+    }
+
+    private fun updateState(state: AppViewState) {
+
+    }
+
+    override fun onResumeFragments() {
+        super.onResumeFragments()
+        navigatorHolder.setNavigator(navigator)
+    }
+
+    override fun onPause() {
+        navigatorHolder.removeNavigator()
+        super.onPause()
+    }
+
+    override fun onBackPressed() {
+        model.onBack()
+    }
+}
+
+
+
+_#subkey
+Класс ModelAdapter
+
+package com.supesuba.smoothing.presentation.view.adapter
+
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.recyclerview.widget.RecyclerView
+import com.supesuba.smoothing.R
+import com.supesuba.smoothing.model.repository.ModelInfo
+import kotlinx.android.synthetic.main.item_model.view.*
+
+class ModelAdapter : RecyclerView.Adapter<ModelAdapter.ActivitiesViewHolder>() {
+
+    interface OnModelClickListener {
+        fun onModelSelected(modelInfo: ModelInfo)
+    }
+
+    private var items: List<ModelInfo> = listOf()
+    var listener: OnModelClickListener? = null
+
+    fun setItems(items: List<ModelInfo>) {
+        this.items = items
+        notifyDataSetChanged()
+    }
+
+    override fun getItemCount(): Int = items.count()
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ActivitiesViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_model, parent, false)
+
+        return ActivitiesViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: ActivitiesViewHolder, position: Int) {
+        val item = items[position]
+        holder.bind(item)
+    }
+
+    inner class ActivitiesViewHolder(val view: View) : RecyclerView.ViewHolder(view) {
+
+        fun bind(data: ModelInfo) {
+            view.modelItemTV.text = data.name
+            view.setOnClickListener { listener?.onModelSelected(data) }
+        }
+
+    }
+}
+
+
+_#subkey
+Класс ImportFragment
+
+package com.supesuba.smoothing.presentation.view.fragment
+
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ArrayAdapter
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.supesuba.navigation.ui.BaseFragment
+import com.supesuba.smoothing.R
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.presentation.view.adapter.ModelAdapter
+import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewModel
+import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewState
+import com.supesuba.utils.common.fileName
+import kotlinx.android.synthetic.main.fragment_import.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import org.koin.android.viewmodel.ext.android.viewModel
+import java.io.File
+import java.io.FileOutputStream
+
+
+/**
+ * Created by 23alot on 09.03.2020.
+ */
+class ImportFragment : BaseFragment(), ModelAdapter.OnModelClickListener {
+    override val layoutRes: Int = 0
+
+    private val model: ImportViewModel by viewModel()
+
+    private lateinit var modelAdapter: ModelAdapter
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return inflater.inflate(R.layout.fragment_import, container, false)
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        fileChooser.setOnClickListener {
+            val intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.type = "text/obj" //Obj file only
+
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+            startActivityForResult(intent, 26)
+        }
+
+        modelAdapter = ModelAdapter()
+        modelsRV.layoutManager = LinearLayoutManager(requireContext())
+        modelsRV.adapter = modelAdapter
+        modelAdapter.listener = this
+        GlobalScope.launch(Dispatchers.Main) {
+            model.state
+                .collect { updateState(it) }
+        }
+
+        GlobalScope.launch(Dispatchers.Main) {
+            model.onCreate()
+        }
+
+        Toast.makeText(requireContext(), "Неверный формат модели", Toast.LENGTH_LONG).show()
+    }
+
+    private fun updateState(state: ImportViewState) {
+        modelAdapter.setItems(state.models)
+    }
+
+
+    override fun onModelSelected(modelInfo: ModelInfo) {
+        val adapter = ArrayAdapter<String>(requireContext(), R.layout.item_algorithm, arrayOf("PN", "Phong"))
+        AlertDialog.Builder(requireContext())
+            .setAdapter(adapter) { _, b ->
+                when(b) {
+                    0 -> model.onPNSelected(modelInfo)
+                    1 -> model.onPhongSelected(modelInfo)
+                }
+            }
+            .create().show()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        // TODO: проверка request и result code
+        val a = File(data?.data?.encodedPath)
+
+        val dir = requireContext().getDir("models", Context.MODE_PRIVATE)
+
+        requireContext().contentResolver.openInputStream(data?.data!!).use { inputStream ->
+            val file = File(dir, data.data?.path!!.fileName())
+            FileOutputStream(file).use { outputStream ->
+                val buf = ByteArray(1024)
+                var len = inputStream?.read(buf) ?: 0
+                while (len > 0) {
+                    outputStream.write(buf, 0, len)
+                    len = inputStream?.read(buf) ?: 0
+                }
+            }
+        }
+
+        GlobalScope.launch(Dispatchers.Main) {
+            model.onCreate()
+        }
+    }
+
+    companion object {
+
+        fun newInstance(): ImportFragment = ImportFragment()
+    }
+}
+
+
+_#subkey
+Класс SmoothingPNFragment
+
+package com.supesuba.smoothing.presentation.view.fragment
+
+import android.os.Bundle
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.SeekBar
+import com.supesuba.navigation.ui.BaseFragment
+import com.supesuba.smoothing.R
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewModel
+import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewState
+import com.supesuba.smoothing.presentation.viewmodel.smoothing_pn.SmoothingViewModel
+import com.supesuba.smoothing.presentation.viewmodel.smoothing_pn.SmoothingViewState
+import kotlinx.android.synthetic.main.fragment_smoothing_pn.*
+import org.koin.android.viewmodel.ext.android.viewModel
+import org.koin.core.parameter.parametersOf
+import org.koin.core.qualifier.StringQualifier
+import org.koin.core.qualifier.named
+
+
+/**
+ * Created by 23alot on 09.03.2020.
+ */
+class SmoothingPNFragment : BaseFragment() {
+    override val layoutRes: Int = 0
+
+    private val model: SmoothingViewModel by viewModel { parametersOf(named(arguments?.getString(QUALIFIER)!!) ?: throw IllegalArgumentException("No smoothing algorithm provided")) }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return inflater.inflate(R.layout.fragment_smoothing_pn, container, false)
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        smoothingLevelSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(p0: SeekBar?, p1: Int, p2: Boolean) {
+                Log.d("SeekBar", "change: ${p0?.progress} $p1 $p2")
+            }
+
+            override fun onStartTrackingTouch(p0: SeekBar?) {
+                Log.d("SeekBar", "start: ${p0?.progress}")
+            }
+
+            override fun onStopTrackingTouch(p0: SeekBar?) {
+                model.onTessellationLevelChanged(p0?.progress?.plus(1) ?: 1)
+            }
+        })
+
+        val modelInfo = arguments?.getParcelable<ModelInfo>(MODEL)
+        model.subscribe { state -> showState(state) }
+        model.onCreate(modelInfo!!)
+    }
+
+    private fun showState(state: SmoothingViewState) {
+        renderView.onReadyToRender(state.renderObject)
+        smoothingTimeTV.text = "${state.renderObject.computationTime}мс"
+    }
+
+    override fun onResume() {
+        super.onResume()
+//        renderView.onResume()
+    }
+
+    override fun onPause() {
+//        renderView.onPause()
+        super.onPause()
+    }
+
+    companion object {
+
+        private const val MODEL = "MODEL"
+        private const val QUALIFIER = "QUALIFIER"
+
+        fun newInstance(model: ModelInfo, qualifier: StringQualifier): SmoothingPNFragment {
+            val fragment = SmoothingPNFragment()
+            val bundle = Bundle()
+            bundle.putParcelable(MODEL, model)
+            bundle.putString(QUALIFIER, qualifier.value)
+            fragment.arguments = bundle
+
+            return fragment
+        }
+    }
+}
+
+
+_#subkey
+Класс ConfigChooser
+
+package com.supesuba.smoothing.presentation.view.surface
+
+
+import android.opengl.GLSurfaceView.EGLConfigChooser
+import android.util.Log
+import javax.microedition.khronos.egl.EGL10
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.egl.EGLDisplay
+
+/**
+ * Created by 23alot on 15.03.2020.
+ */
+internal class ConfigChooser(r: Int, g: Int, b: Int, a: Int, depth: Int, stencil: Int) :
+    EGLConfigChooser {
+    override fun chooseConfig(
+        egl: EGL10,
+        display: EGLDisplay
+    ): EGLConfig? {
+
+        /* Get the number of minimally matching EGL configurations
+             */
+        val num_config = IntArray(1)
+        egl.eglChooseConfig(display, s_configAttribs2, null, 0, num_config)
+        val numConfigs = num_config[0]
+        require(numConfigs > 0) { "No configs match configSpec" }
+
+        /* Allocate then read the array of minimally matching EGL configs
+             */
+        val configs =
+            arrayOfNulls<EGLConfig>(numConfigs)
+        egl.eglChooseConfig(
+            display,
+            s_configAttribs2,
+            configs,
+            numConfigs,
+            num_config
+        )
+        printConfigs(egl, display, configs)
+        /* Now return the "best" one
+             */return chooseConfig(egl, display, configs)
+    }
+
+    fun chooseConfig(
+        egl: EGL10, display: EGLDisplay,
+        configs: Array<EGLConfig?>
+    ): EGLConfig? {
+        for (config in configs) {
+            val d = findConfigAttrib(
+                egl, display, config,
+                EGL10.EGL_DEPTH_SIZE, 0
+            )
+            val s = findConfigAttrib(
+                egl, display, config,
+                EGL10.EGL_STENCIL_SIZE, 0
+            )
+
+            // We need at least mDepthSize and mStencilSize bits
+            if (d < mDepthSize || s < mStencilSize) continue
+
+            // We want an *exact* match for red/green/blue/alpha
+            val r = findConfigAttrib(
+                egl, display, config,
+                EGL10.EGL_RED_SIZE, 0
+            )
+            val g = findConfigAttrib(
+                egl, display, config,
+                EGL10.EGL_GREEN_SIZE, 0
+            )
+            val b = findConfigAttrib(
+                egl, display, config,
+                EGL10.EGL_BLUE_SIZE, 0
+            )
+            val a = findConfigAttrib(
+                egl, display, config,
+                EGL10.EGL_ALPHA_SIZE, 0
+            )
+            if (r == mRedSize && g == mGreenSize && b == mBlueSize && a == mAlphaSize) return config
+        }
+        return null
+    }
+
+    private fun findConfigAttrib(
+        egl: EGL10, display: EGLDisplay,
+        config: EGLConfig?, attribute: Int, defaultValue: Int
+    ): Int {
+        return if (egl.eglGetConfigAttrib(display, config, attribute, mValue)) {
+            mValue[0]
+        } else defaultValue
+    }
+
+    private fun printConfigs(
+        egl: EGL10, display: EGLDisplay,
+        configs: Array<EGLConfig?>
+    ) {
+        val numConfigs = configs.size
+        Log.w("ConfigChooser", String.format("%d configurations", numConfigs))
+        for (i in 0 until numConfigs) {
+            Log.w("ConfigChooser", String.format("Configuration %d:\n", i))
+            printConfig(egl, display, configs[i])
+        }
+    }
+
+    private fun printConfig(
+        egl: EGL10, display: EGLDisplay,
+        config: EGLConfig?
+    ) {
+        val attributes = intArrayOf(
+            EGL10.EGL_BUFFER_SIZE,
+            EGL10.EGL_ALPHA_SIZE,
+            EGL10.EGL_BLUE_SIZE,
+            EGL10.EGL_GREEN_SIZE,
+            EGL10.EGL_RED_SIZE,
+            EGL10.EGL_DEPTH_SIZE,
+            EGL10.EGL_STENCIL_SIZE,
+            EGL10.EGL_CONFIG_CAVEAT,
+            EGL10.EGL_CONFIG_ID,
+            EGL10.EGL_LEVEL,
+            EGL10.EGL_MAX_PBUFFER_HEIGHT,
+            EGL10.EGL_MAX_PBUFFER_PIXELS,
+            EGL10.EGL_MAX_PBUFFER_WIDTH,
+            EGL10.EGL_NATIVE_RENDERABLE,
+            EGL10.EGL_NATIVE_VISUAL_ID,
+            EGL10.EGL_NATIVE_VISUAL_TYPE,
+            0x3030,  // EGL10.EGL_PRESERVED_RESOURCES,
+            EGL10.EGL_SAMPLES,
+            EGL10.EGL_SAMPLE_BUFFERS,
+            EGL10.EGL_SURFACE_TYPE,
+            EGL10.EGL_TRANSPARENT_TYPE,
+            EGL10.EGL_TRANSPARENT_RED_VALUE,
+            EGL10.EGL_TRANSPARENT_GREEN_VALUE,
+            EGL10.EGL_TRANSPARENT_BLUE_VALUE,
+            0x3039,  // EGL10.EGL_BIND_TO_TEXTURE_RGB,
+            0x303A,  // EGL10.EGL_BIND_TO_TEXTURE_RGBA,
+            0x303B,  // EGL10.EGL_MIN_SWAP_INTERVAL,
+            0x303C,  // EGL10.EGL_MAX_SWAP_INTERVAL,
+            EGL10.EGL_LUMINANCE_SIZE,
+            EGL10.EGL_ALPHA_MASK_SIZE,
+            EGL10.EGL_COLOR_BUFFER_TYPE,
+            EGL10.EGL_RENDERABLE_TYPE,
+            0x3042 // EGL10.EGL_CONFORMANT
+        )
+        val names = arrayOf(
+            "EGL_BUFFER_SIZE",
+            "EGL_ALPHA_SIZE",
+            "EGL_BLUE_SIZE",
+            "EGL_GREEN_SIZE",
+            "EGL_RED_SIZE",
+            "EGL_DEPTH_SIZE",
+            "EGL_STENCIL_SIZE",
+            "EGL_CONFIG_CAVEAT",
+            "EGL_CONFIG_ID",
+            "EGL_LEVEL",
+            "EGL_MAX_PBUFFER_HEIGHT",
+            "EGL_MAX_PBUFFER_PIXELS",
+            "EGL_MAX_PBUFFER_WIDTH",
+            "EGL_NATIVE_RENDERABLE",
+            "EGL_NATIVE_VISUAL_ID",
+            "EGL_NATIVE_VISUAL_TYPE",
+            "EGL_PRESERVED_RESOURCES",
+            "EGL_SAMPLES",
+            "EGL_SAMPLE_BUFFERS",
+            "EGL_SURFACE_TYPE",
+            "EGL_TRANSPARENT_TYPE",
+            "EGL_TRANSPARENT_RED_VALUE",
+            "EGL_TRANSPARENT_GREEN_VALUE",
+            "EGL_TRANSPARENT_BLUE_VALUE",
+            "EGL_BIND_TO_TEXTURE_RGB",
+            "EGL_BIND_TO_TEXTURE_RGBA",
+            "EGL_MIN_SWAP_INTERVAL",
+            "EGL_MAX_SWAP_INTERVAL",
+            "EGL_LUMINANCE_SIZE",
+            "EGL_ALPHA_MASK_SIZE",
+            "EGL_COLOR_BUFFER_TYPE",
+            "EGL_RENDERABLE_TYPE",
+            "EGL_CONFORMANT"
+        )
+        val value = IntArray(1)
+        for (i in attributes.indices) {
+            val attribute = attributes[i]
+            val name = names[i]
+            if (egl.eglGetConfigAttrib(display, config, attribute, value)) {
+                Log.w("ConfigChooser", String.format("  %s: %d\n", name, value[0]))
+            } else {
+                while (egl.eglGetError() != EGL10.EGL_SUCCESS);
+            }
+        }
+    }
+
+    // Subclasses can adjust these values:
+    protected var mRedSize: Int
+    protected var mGreenSize: Int
+    protected var mBlueSize: Int
+    protected var mAlphaSize: Int
+    protected var mDepthSize: Int
+    protected var mStencilSize: Int
+    private val mValue = IntArray(1)
+
+    companion object {
+        /* This EGL config specification is used to specify 2.0 rendering.
+         * We use a minimum size of 4 bits for red/green/blue, but will
+         * perform actual matching in chooseConfig() below.
+         */
+        private const val EGL_OPENGL_ES2_BIT = 4
+        private val s_configAttribs2 = intArrayOf(
+            EGL10.EGL_RED_SIZE, 4,
+            EGL10.EGL_GREEN_SIZE, 4,
+            EGL10.EGL_BLUE_SIZE, 4,
+            EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+            EGL10.EGL_NONE
+        )
+    }
+
+    init {
+        mRedSize = r
+        mGreenSize = g
+        mBlueSize = b
+        mAlphaSize = a
+        mDepthSize = depth
+        mStencilSize = stencil
+    }
+}
+
+
+_#subkey
+Класс ContextFactory
+
+package com.supesuba.smoothing.presentation.view.surface
+
+import android.opengl.GLSurfaceView.EGLContextFactory
+import javax.microedition.khronos.egl.EGL10
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.egl.EGLContext
+import javax.microedition.khronos.egl.EGLDisplay
+
+
+/**
+ * Created by 23alot on 16.03.2020.
+ */
+
+class ContextFactory : EGLContextFactory {
+
+        override fun createContext(
+        egl: EGL10,
+        display: EGLDisplay?,
+        eglConfig: EGLConfig?
+    ): EGLContext {
+        val EGL_CONTEXT_CLIENT_VERSION = 0x3098
+        val attrib_list = intArrayOf(EGL_CONTEXT_CLIENT_VERSION, 2, EGL10.EGL_NONE)
+        return egl.eglCreateContext(display, eglConfig, EGL10.EGL_NO_CONTEXT, attrib_list)
+    }
+
+    override fun destroyContext(egl: EGL10, display: EGLDisplay?, context: EGLContext?) {
+        egl.eglDestroyContext(display, context)
+    }
+}
+
+
+_#subkey
+Класс SmoothingGLSurfaceView
+
+package com.supesuba.smoothing.presentation.view.surface
+
+import android.content.Context
+import android.opengl.GLSurfaceView
+import android.util.AttributeSet
+import android.util.Log
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import com.supesuba.smoothing.RenderObject
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.model.repository.ShaderRepository
+import com.supesuba.smoothing.presentation.renderer.ScrollEvent
+import com.supesuba.smoothing.presentation.renderer.SmoothingGLRenderer
+import org.koin.core.context.KoinContextHandler.get
+import org.koin.experimental.property.inject
+import kotlin.math.max
+import kotlin.math.min
+
+/**
+ * Created by 23alot on 09.03.2020.
+ */
+class SmoothingGLSurfaceView(
+    context: Context,
+    attributeSet: AttributeSet? = null
+) : GLSurfaceView(context, attributeSet) {
+
+    private val renderer: SmoothingGLRenderer
+    private val shaderRepository: ShaderRepository by get().inject()
+    private val gestureDetector = GestureDetector(context, GestureListener())
+    private val scaleGestureDetector = ScaleGestureDetector(context, GestureListener())
+
+    init {
+
+        setEGLContextFactory(ContextFactory())
+        setEGLConfigChooser(ConfigChooser(8, 8, 8, 8, 0, 0))
+        // Create an OpenGL ES 3.2 context
+        renderer = SmoothingGLRenderer(shaderRepository)
+
+        // Set the Renderer for drawing on the GLSurfaceView
+        setRenderer(renderer)
+//        renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
+    }
+
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+
+        var result = scaleGestureDetector.onTouchEvent(event)
+        result = gestureDetector.onTouchEvent(event) || result
+        return result || super.onTouchEvent(event)
+    }
+
+    fun onReadyToRender(renderObject: RenderObject) {
+        renderer.setRenderObject(renderObject)
+    }
+
+    private inner class GestureListener : GestureDetector.SimpleOnGestureListener(), ScaleGestureDetector.OnScaleGestureListener {
+
+        private var scaleFactor: Float = 1f
+
+        override fun onScroll(e1: MotionEvent?, e2: MotionEvent?, distanceX: Float, distanceY: Float): Boolean {
+            if (scaleGestureDetector.isInProgress) return false
+            renderer.onScrollEvent(ScrollEvent(distanceX, distanceY))
+            return super.onScroll(e1, e2, distanceX, distanceY)
+        }
+
+        override fun onScaleBegin(p0: ScaleGestureDetector?): Boolean {
+            return true
+        }
+
+        override fun onScaleEnd(p0: ScaleGestureDetector?) {
+
+        }
+
+        override fun onScale(p0: ScaleGestureDetector?): Boolean {
+            scaleFactor *= p0?.scaleFactor ?: 1f
+            scaleFactor = max(0.1f,
+                min(scaleFactor, 10.0f)
+            )
+            renderer.onScaleEvent(scaleFactor)
+            return true
+        }
+    }
+}
+
+
+_#subkey
+Класс AppPartialViewStates
+
+package com.supesuba.smoothing.presentation.viewmodel.app
+
+/**
+ * Created by 23alot on 08.03.2020.
+ */
+typealias AppPartialViewState = (AppViewState) -> AppViewState
+
+object AppPartialViewStates {
+
+    fun test(): AppPartialViewState = { previousViewState ->
+        previousViewState.copy(
+            test = false
+        )
+    }
+}
+
+
+_#subkey
+Класс AppViewModel
+
+package com.supesuba.smoothing.presentation.viewmodel.app
+
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asFlow
+import com.supesuba.smoothing.router.AppRouter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.scan
+
+/**
+ * Created by 23alot on 08.03.2020.
+ */
+class AppViewModel constructor(
+    private val router: AppRouter
+) : ViewModel() {
+    private val stateRelay = MutableLiveData<AppPartialViewState>()
+
+    @ExperimentalCoroutinesApi
+    val state = stateRelay.asFlow()
+        .scan(AppViewState()) { state, partial -> partial(state) }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+
+    fun onCreate() {
+        router.openMainScreen()
+    }
+
+    fun test() {
+        stateRelay.postValue(AppPartialViewStates.test())
+    }
+
+    fun onBack() {
+        router.onBack()
+    }
+}
+
+
+_#subkey
+Класс AppViewState
+
+package com.supesuba.smoothing.presentation.viewmodel.app
+
+/**
+ * Created by 23alot on 08.03.2020.
+ */
+data class AppViewState(
+    val test: Boolean = true
+)
+
+
+_#subkey
+Класс ImportPartialViewStates
+
+package com.supesuba.smoothing.presentation.viewmodel.import_model
+
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.presentation.viewmodel.app.AppViewState
+
+typealias ImportPartialViewState = (ImportViewState) -> ImportViewState
+
+object ImportPartialViewStates {
+
+    fun loaded(models: List<ModelInfo>): ImportPartialViewState = { previousViewState ->
+        previousViewState.copy(
+            models = models
+        )
+    }
+
+    fun init(): ImportPartialViewState = { previousViewState ->
+        previousViewState
+    }
+}
+
+
+_#subkey
+Класс ImportViewModel
+
+package com.supesuba.smoothing.presentation.viewmodel.import_model
+
+import androidx.lifecycle.ViewModel
+import com.supesuba.smoothing.domain.ModelInteractor
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.router.AppRouter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.scan
+
+/**
+ * Created by 23alot on 11.05.2020.
+ */
+class ImportViewModel constructor(
+    private val router: AppRouter,
+    private val modelInteractor: ModelInteractor
+) : ViewModel() {
+    @ExperimentalCoroutinesApi
+    private val stateFlow = MutableStateFlow<ImportPartialViewState>(ImportPartialViewStates.init())
+
+
+    @ExperimentalCoroutinesApi
+    val state = stateFlow
+        .scan(ImportViewState()) { state, partial -> partial(state) }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+
+    suspend fun onCreate() {
+        val event = modelInteractor.getModels()
+        when (event) {
+            is ModelInteractor.ModelEvent.Models -> stateFlow.value = ImportPartialViewStates.loaded(event.models)
+        }
+    }
+
+    fun onPNSelected(modelInfo: ModelInfo) {
+        router.openPNSmoothing(modelInfo)
+    }
+
+    fun onPhongSelected(modelInfo: ModelInfo) {
+        router.openPhong(modelInfo)
+    }
+
+    fun onBack() {
+        router.onBack()
+    }
+}
+
+
+_#subkey
+Класс ImportViewState
+
+package com.supesuba.smoothing.presentation.viewmodel.import_model
+
+import com.supesuba.smoothing.model.repository.ModelInfo
+
+data class ImportViewState(
+    val models: List<ModelInfo> = emptyList()
+)
+
+
+_#subkey
+Класс SmoothingViewModel
+
+package com.supesuba.smoothing.presentation.viewmodel.smoothing_pn
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.supesuba.smoothing.Triangle
+import com.supesuba.smoothing.Vertex
+import com.supesuba.smoothing.domain.ModelInteractor
+import com.supesuba.smoothing.domain.SmoothingInteractor
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.router.AppRouter
+import com.supesuba.smoothing.toVertexList
+import de.javagl.obj.Obj
+import de.javagl.obj.ObjData
+import de.javagl.obj.ObjUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+
+/**
+ * Created by 23alot on 11.05.2020.
+ */
+class SmoothingViewModel constructor(
+    private val router: AppRouter,
+    private val modelInteractor: ModelInteractor,
+    private val smoothingInteractor: SmoothingInteractor
+) : ViewModel() {
+
+    fun subscribe(block: suspend CoroutineScope.(SmoothingViewState) -> Unit) {
+        viewModelScope.launch {
+            smoothingInteractor.observeModelChanges()
+                .flowOn(Dispatchers.Main)
+                .map { renderObject -> SmoothingViewState(renderObject) }
+                .collect { block(this, it) }
+        }
+    }
+
+    fun onCreate(modelInfo: ModelInfo) {
+        viewModelScope.launch {
+            val event = modelInteractor.loadModel(modelInfo)
+            when (event) {
+                is ModelInteractor.ModelEvent.ObjLoaded -> onObjLoaded(event.obj)
+            }
+        }
+    }
+
+    private suspend fun onObjLoaded(obj: Obj) {
+        val a3 = ObjUtils.triangulate(obj)
+        val a4 = ObjUtils.makeNormalsUnique(a3)
+        val a5 = ObjUtils.convertToRenderable(a4)
+
+        val r4 = ObjData.getVerticesArray(a5)
+        val points = r4.toVertexList()
+        for (i in 0 until a5.numFaces) {
+            val face = a5.getFace(i)
+            val l = mutableListOf<Int>()
+            val tv = mutableListOf<Vertex>()
+            for (z in 0 until face.numVertices) {
+                val vert = face.getVertexIndex(z)
+                tv += points[vert]
+                l += vert
+            }
+
+            val t = Triangle(
+                v1 = tv[0],
+                v2 = tv[1],
+                v3 = tv[2]
+            )
+
+            smoothingInteractor.addTriangle(t)
+        }
+
+        smoothingInteractor.calculateVertexNormals(vertices = points)
+        smoothingInteractor.calculateSupportPoints()
+        smoothingInteractor.tessellate(1)
+    }
+
+    fun onTessellationLevelChanged(tessellationLevel: Int) {
+        viewModelScope.launch {
+            smoothingInteractor.tessellate(tessellationLevel)
+        }
+
+    }
+
+    fun onBack() {
+        router.onBack()
+    }
+}
+
+
+_#subkey
+Класс SmoothingViewState
+
+package com.supesuba.smoothing.presentation.viewmodel.smoothing_pn
+
+import com.supesuba.smoothing.RenderObject
+
+data class SmoothingViewState(
+    val renderObject: RenderObject
+)
+
+
+_#subkey
+Класс AppRouter
+
+package com.supesuba.smoothing.router
+
+import android.net.Uri
+import com.supesuba.smoothing.model.repository.ModelInfo
+import ru.terrakok.cicerone.Router
+
+/**
+ * Created by 23alot on 08.03.2020.
+ */
+class AppRouter(
+    private val router: Router
+) {
+
+    fun openMainScreen() {
+        router.newRootScreen(Screens.Import)
+    }
+
+    fun openPNSmoothing(modelInfo: ModelInfo) {
+        router.navigateTo(Screens.SmoothingPN(model = modelInfo))
+    }
+
+    fun openPhong(modelInfo: ModelInfo) {
+        router.navigateTo(Screens.PhongTessellation(model = modelInfo))
+    }
+
+    fun onBack() {
+        router.exit()
+    }
+}
+
+
+_#subkey
+Класс Screens
+
+package com.supesuba.smoothing.router
+
+import androidx.fragment.app.Fragment
+import com.supesuba.smoothing.di.PNTriangle
+import com.supesuba.smoothing.di.PhongTessellation
+import com.supesuba.smoothing.model.repository.ModelInfo
+import com.supesuba.smoothing.presentation.view.fragment.ImportFragment
+import com.supesuba.smoothing.presentation.view.fragment.SmoothingPNFragment
+import ru.terrakok.cicerone.android.support.SupportAppScreen
+
+/**
+ * Created by 23alot on 09.03.2020.
+ */
+object Screens {
+    data class SmoothingPN(
+        private val model: ModelInfo
+    ): SupportAppScreen() {
+        override fun getFragment(): Fragment = SmoothingPNFragment.newInstance(model, PNTriangle)
+    }
+
+    data class PhongTessellation(
+        private val model: ModelInfo
+    ): SupportAppScreen() {
+        override fun getFragment(): Fragment = SmoothingPNFragment.newInstance(model, PhongTessellation)
+    }
+
+    object Import: SupportAppScreen() {
+        override fun getFragment(): Fragment = ImportFragment.newInstance()
+    }
+}
+
+
+_#subkey
+Класс PhongSmoothingInteractor
+
+package com.supesuba.smoothing.domain
+
+import com.supesuba.smoothing.PhongTriangle
+import com.supesuba.smoothing.RenderObject
+import com.supesuba.smoothing.Triangle
+import com.supesuba.smoothing.Vertex
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.onStart
+
+class PhongSmoothingInteractor(
+
+) : SmoothingInteractor {
+    private val triangles = mutableListOf<PhongTriangle>()
+
+    @ExperimentalCoroutinesApi
+    private val state = MutableStateFlow<RenderObject>(RenderObject())
+
+
+    override suspend fun addTriangle(triangle: Triangle) {
+        triangles += PhongTriangle(triangle)
+    }
+
+    override suspend fun calculateVertexNormals(vertices: List<Vertex>) {
+        vertices.forEachIndexed { _, vertex ->
+            vertex.toVertexNormal(
+                triangles.map(PhongTriangle::triangle).filter { vertex in it.toList() })
+        }
+    }
+
+    @ExperimentalCoroutinesApi
+    override suspend fun tessellate(tessellationLevel: Int) {
+        val start = System.currentTimeMillis()
+        val newTriangles = triangles.map { it.tessellate(tessellationLevel, ALPHA) }.flatten()
+        val vertices = newTriangles.map { it.toList() }.flatten()
+        val end = System.currentTimeMillis()
+
+        state.value = RenderObject(
+            verticesArray = vertices.map { it.toList() }.flatten().toFloatArray(),
+            normalsArray = vertices.map { it.getNormalList() }.flatten().toFloatArray(),
+            colorsArray = getColorsArray(vertices),
+            computationTime = end - start
+        )
+    }
+
+    @ExperimentalCoroutinesApi
+    override suspend fun observeModelChanges(): Flow<RenderObject> = state
+        .onStart {
+            val vertices = triangles.map { it.triangle.toList() }.flatten()
+            emit(
+                RenderObject(
+                    verticesArray = vertices.map { it.toList() }.flatten().toFloatArray(),
+                    normalsArray = vertices.map { it.getNormalList() }.flatten().toFloatArray(),
+                    colorsArray = getColorsArray(vertices)
+                )
+            )
+        }
+
+    override suspend fun calculateSupportPoints() = Unit
+
+    private fun getColorsArray(vertices: List<Vertex>): FloatArray {
+        val color = listOf(0f, 0f, 0f)
+        val result = mutableListOf<Float>()
+        for (i in 0 until vertices.count()) {
+            result += color
+        }
+
+        return result.toFloatArray()
+    }
+
+    companion object {
+        private const val ALPHA = 0.75f
+    }
+}
+
+
+_#subkey
+Класс PNTriangleSmoothingInteractor
+
+package com.supesuba.smoothing.domain
+
+import com.supesuba.smoothing.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onStart
+
+class PNTriangleSmoothingInteractor(
+
+): SmoothingInteractor {
+    private val triangles = mutableListOf<PNTriangle>()
+
+    @ExperimentalCoroutinesApi
+    private val state = MutableStateFlow<RenderObject>(RenderObject())
+
+
+    override suspend fun addTriangle(triangle: Triangle) {
+        triangles += PNTriangle(triangle = triangle)
+    }
+
+    override suspend fun calculateVertexNormals(vertices: List<Vertex>) {
+        vertices.forEachIndexed { _, vertex ->
+            vertex.toVertexNormal(triangles.map(PNTriangle::triangle).filter { vertex in it.toList() })
+        }
+    }
+
+    override suspend fun calculateSupportPoints() {
+        triangles.forEach { it.calculateSupportPoints() }
+    }
+
+    @ExperimentalCoroutinesApi
+    override suspend fun tessellate(tessellationLevel: Int) {
+        val start = System.currentTimeMillis()
+        val newTriangles = triangles.map { it.tessellate(tessellationLevel) }.flatten()
+        val vertices = newTriangles.map { it.toList() }.flatten()
+        val end = System.currentTimeMillis()
+
+        state.value = RenderObject(
+            verticesArray = vertices.map { it.toList() }.flatten().toFloatArray(),
+            normalsArray = vertices.map { it.getNormalList() }.flatten().toFloatArray(),
+            colorsArray = getColorsArray(vertices),
+            computationTime = end - start
+        )
+    }
+
+    @ExperimentalCoroutinesApi
+    override suspend fun observeModelChanges(): Flow<RenderObject> = state
+        .onStart {
+            val vertices = triangles.map { it.triangle.toList() }.flatten()
+            emit(
+                RenderObject(
+                    verticesArray = vertices.map { it.toList() }.flatten().toFloatArray(),
+                    normalsArray = vertices.map { it.getNormalList() }.flatten().toFloatArray(),
+                    colorsArray = getColorsArray(vertices)
+                )
+            )
+        }
+
+    private fun getColorsArray(vertices: List<Vertex>): FloatArray {
+        val color = listOf(0f, 0f, 0f)
+        val result = mutableListOf<Float>()
+        for (i in 0 until vertices.count()){
+            result += color
+        }
+
+        return result.toFloatArray()
+    }
+}
+
+
+_#subkey
+Интерфейс SmoothingInteractor
+
+package com.supesuba.smoothing.domain
+
+import com.supesuba.smoothing.RenderObject
+import com.supesuba.smoothing.Triangle
+import com.supesuba.smoothing.Vertex
+import kotlinx.coroutines.flow.Flow
+
+interface SmoothingInteractor {
+
+    suspend fun addTriangle(triangle: Triangle)
+
+    suspend fun tessellate(tessellationLevel: Int)
+
+    suspend fun observeModelChanges(): Flow<RenderObject>
+
+    suspend fun calculateVertexNormals(vertices: List<Vertex>)
+
+    suspend fun calculateSupportPoints()
+}
+
+
+_#subkey
+Класс PhongTriangle
+
+package com.supesuba.smoothing
+
+import collections.list
+
+class PhongTriangle(
+    val triangle: Triangle
+) {
+
+    fun tessellate(tessellationLevel: Int, alpha: Float): List<Triangle> {
+        val vertices = mutableListOf<Vertex>()
+        for (i in 0..tessellationLevel) {
+            val k = tessellationLevel - i
+            for (j in (tessellationLevel - k) downTo 0) {
+                val z = i - j
+
+                val vertex = pS(
+                    u = k.toFloat() / tessellationLevel,
+                    v = j.toFloat() / tessellationLevel,
+                    w = z.toFloat() / tessellationLevel,
+                    alpha = alpha
+                )
+
+                vertex.normal = n(
+                    u = k.toFloat() / tessellationLevel,
+                    v = j.toFloat() / tessellationLevel,
+                    w = z.toFloat() / tessellationLevel
+                )
+
+                vertices += vertex
+            }
+        }
+
+        return trianglesFromVertices(vertices = vertices, level = tessellationLevel)
+    }
+
+    private fun p(u: Float, v: Float, w: Float): Vertex {
+        val barVector = Vector(x = u, y = v, z = w)
+        val vertexVector = VectorOfVector(
+            v1 = triangle.v1.toVector(),
+            v2 = triangle.v2.toVector(),
+            v3 = triangle.v3.toVector()
+        )
+
+        return (barVector * vertexVector).toVertex()
+    }
+
+    private fun n(u: Float, v: Float, w: Float): Normal {
+        val barVector = Vector(x = u, y = v, z = w)
+        val normalVector = VectorOfVector(
+            v1 = triangle.v1.normal,
+            v2 = triangle.v2.normal,
+            v3 = triangle.v3.normal
+        )
+        return (barVector * normalVector).normalize()
+    }
+
+    private fun pi(q: Vertex, v: Vertex, n: Normal): Vector = q.toVector() -
+            ((q - v) * n) * n
+
+    private fun pS(u: Float, v: Float, w: Float, alpha: Float): Vertex {
+        val p = p(u, v, w)
+
+        return ((1 - alpha) * p.toVector() + alpha * Vector(u, v, w) * VectorOfVector(
+            pi(p, triangle.v1, triangle.v1.normal),
+            pi(p, triangle.v2, triangle.v2.normal),
+            pi(p, triangle.v3, triangle.v3.normal)
+        )).toVertex()
+    }
+
+    private fun trianglesFromVertices(vertices: List<Vertex>, level: Int): List<Triangle> {
+        val result = mutableListOf<Triangle>()
+        val rightEdgePoints = list<Int>(
+            capacity = level,
+            supplier = { index -> (index + 2) * (index + 1) / 2 })
+        val n = rightEdgePoints.last()
+        for (i in 0 until n) {
+            val verticesInRow = rightEdgePoints.indexOfFirst { i < it } + 1
+            // blue triangle
+            result += Triangle(
+                v1 = vertices[i],
+                v2 = vertices[i + verticesInRow + 1],
+                v3 = vertices[i + verticesInRow]
+            )
+            if ((i + 1 in rightEdgePoints).not()) {
+                // red triangle
+                result += Triangle(
+                    v1 = vertices[i],
+                    v2 = vertices[i + 1],
+                    v3 = vertices[i + verticesInRow + 1]
+                )
+            }
+        }
+
+        return result
+    }
+}
+
+
+_#subkey
+Класс PNTriangle
+
+package com.supesuba.smoothing
+
+import collections.list
+import kotlin.math.pow
+
+class PNTriangle(
+    val triangle: Triangle
+) {
+
+    private lateinit var supportPoints: SupportPoints
+
+    suspend fun calculateSupportPoints() {
+        if (::supportPoints.isInitialized) return
+        val p = listOf(triangle.v1, triangle.v2, triangle.v3)
+        val n = listOf(triangle.v1.normal, triangle.v2.normal, triangle.v3.normal)
+        val v = mutableListOf<List<Float>>()
+        val w = mutableListOf<List<Float>>()
+        for (i in 0..2) {
+            val rv = mutableListOf<Float>()
+            val rw = mutableListOf<Float>()
+            for (j in 0..2) {
+                rv += 2f * ((p[j] - p[i]).dotProduct(n[i] + n[j])) / (p[j] - p[i]).dotProduct(p[j] - p[i])
+                rw += (p[j] - p[i]).dotProduct(n[i])
+            }
+            v += rv
+            w += rw
+        }
+
+        supportPoints = SupportPoints(
+            n200 = n[0],
+            n020 = n[1],
+            n002 = n[2],
+            n110 = (n[0] + n[1] - v[0][1] * (p[1] - p[0])).normalize(),
+            n011 = (n[1] + n[2] - v[1][2] * (p[2] - p[1])).normalize(),
+            n101 = (n[2] + n[0] - v[2][0] * (p[0] - p[2])).normalize(),
+            b111 = Vertex(0f, 0f, 0f),
+            b210 = (2f * p[0] + p[1] - w[0][1] * n[0].toVertex()).toVertex() / 3f,
+            b120 = (2f * p[1] + p[0] - w[1][0] * n[1].toVertex()).toVertex() / 3f,
+            b021 = (2f * p[1] + p[2] - w[1][2] * n[1].toVertex()).toVertex() / 3f,
+            b012 = (2f * p[2] + p[1] - w[2][1] * n[2].toVertex()).toVertex() / 3f,
+            b102 = (2f * p[2] + p[0] - w[2][0] * n[2].toVertex()).toVertex() / 3f,
+            b201 = (2f * p[0] + p[2] - w[0][2] * n[0].toVertex()).toVertex() / 3f,
+            b003 = p[2],
+            b030 = p[1],
+            b300 = p[0]
+        )
+        with(supportPoints) {
+            val E = (b210 + b120 + b021 + b012 + b102 + b201) / 6f
+            val V = (p[0] + p[1] + p[2]) / 3f
+
+            supportPoints = supportPoints.copy(
+                b111 = (1.5f * E - 0.5f * V).toVertex()
+            )
+        }
+    }
+
+    fun tessellate(level: Int): List<Triangle> {
+        val vertices = mutableListOf<Vertex>()
+        for (i in 0..level) {
+            val k = level - i
+            for (j in (level - k) downTo 0) {
+                val z = i - j
+
+                val vertex = p(
+                    u = k.toFloat() / level,
+                    v = j.toFloat() / level,
+                    w = z.toFloat() / level
+                )
+
+                vertex.normal = n(
+                    u = k.toFloat() / level,
+                    v = j.toFloat() / level,
+                    w = z.toFloat() / level
+                )
+
+                vertices += vertex
+            }
+        }
+
+        return trianglesFromVertices(vertices = vertices, level = level)
+    }
+
+    private fun p(u: Float, v: Float, w: Float): Vertex {
+        with(supportPoints) {
+            return b300 * u.pow(3) + b030 * v.pow(3) + b003 * w.pow(3) +
+                    3f * b210 * u.pow(2) * v + 3f * b120 * u * v.pow(2) + 3f * b201 * u.pow(2) * w + 3f * b021 * v.pow(2) * w +
+                    3f * b102 * u * w.pow(2) + 3f * b012 * v * w.pow(2) + 6f * b111 * u * v * w
+        }
+    }
+
+    private fun n(u: Float, v: Float, w: Float): Vector {
+        with(supportPoints) {
+            return n200 * u.pow(2) + n020 * v.pow(2) + n002 * w.pow(2) + 2f * n110 * u * v +
+                    2f * n011 * v * w + 2f * n101 * u * w
+        }
+    }
+
+    private fun trianglesFromVertices(vertices: List<Vertex>, level: Int): List<Triangle> {
+        val result = mutableListOf<Triangle>()
+        val rightEdgePoints = list<Int>(
+            capacity = level,
+            supplier = { index -> (index + 2) * (index + 1) / 2 })
+        val n = rightEdgePoints.last()
+        for (i in 0 until n) {
+            val verticesInRow = rightEdgePoints.indexOfFirst { i < it } + 1
+            // blue triangle
+            result += Triangle(
+                v1 = vertices[i],
+                v2 = vertices[i + verticesInRow + 1],
+                v3 = vertices[i + verticesInRow]
+            )
+            if ((i + 1 in rightEdgePoints).not()) {
+                // red triangle
+                result += Triangle(
+                    v1 = vertices[i],
+                    v2 = vertices[i + 1],
+                    v3 = vertices[i + verticesInRow + 1]
+                )
+            }
+        }
+
+        return result
+    }
+
+}
+
+fun Triangle.toPNTriangle(): PNTriangle = PNTriangle(this)
+
+data class SupportPoints(
+    val b300: Vertex,
+    val b030: Vertex,
+    val b003: Vertex,
+    val b210: Vertex,
+    val b120: Vertex,
+    val b021: Vertex,
+    val b012: Vertex,
+    val b201: Vertex,
+    val b102: Vertex,
+    val b111: Vertex,
+    val n200: Vector,
+    val n020: Vector,
+    val n002: Vector,
+    val n110: Vector,
+    val n011: Vector,
+    val n101: Vector
+)
+
+
+_#subkey
+Класс RenderObject
+
+package com.supesuba.smoothing
+
+data class RenderObject(
+    val verticesArray: FloatArray = floatArrayOf(),
+    val normalsArray: FloatArray = floatArrayOf(),
+    val colorsArray: FloatArray = floatArrayOf(),
+    val computationTime: Long = 0L
+)
+
+
+_#subkey
+Класс Triangle
+
+package com.supesuba.smoothing
+
+open class Triangle(
+    val v1: Vertex,
+    val v2: Vertex,
+    val v3: Vertex
+) {
+    val normal = (v1 - v2).crossProduct(v1 - v3).normalize()
+
+    fun toList(): List<Vertex> = listOf(v1, v2, v3)
+}
+
+
+_#subkey
+Класс Vector
+
+package com.supesuba.smoothing
+
+import kotlin.math.sqrt
+
+data class Vector(
+    val x: Float,
+    val y: Float,
+    val z: Float
+) {
+
+    operator fun div(value: Float): Vector =
+        Vector(
+            x = this.x / value,
+            y = this.y / value,
+            z = this.z / value
+        )
+
+    operator fun times(value: Float): Vector =
+        Vector(
+            x = this.x * value,
+            y = this.y * value,
+            z = this.z * value
+        )
+
+    operator fun times(other: Vector): Vector = crossProduct(other)
+
+    operator fun times(transposedVector: TransposedVector): Float =
+        x * transposedVector.p1 +
+                y * transposedVector.p2 +
+                z * transposedVector.p3
+
+    operator fun times(vv: VectorOfVector): Vector = Vector(
+        x = this.x * vv.v1.x + this.y * vv.v2.x + this.z * vv.v3.x,
+        y = this.x * vv.v1.y + this.y * vv.v2.y + this.z * vv.v3.y,
+        z = this.x * vv.v1.z + this.y * vv.v2.z + this.z * vv.v3.z
+    )
+
+    operator fun plus(value: Float): Vector =
+        Vector(
+            x = this.x + value,
+            y = this.y + value,
+            z = this.z + value
+        )
+
+    operator fun plus(value: Vector): Vector =
+        Vector(
+            x = this.x + value.x,
+            y = this.y + value.y,
+            z = this.z + value.z
+        )
+
+    operator fun minus(value: Float): Vector =
+        Vector(
+            x = this.x - value,
+            y = this.y - value,
+            z = this.z - value
+        )
+
+    operator fun minus(value: Vector): Vector =
+        Vector(
+            x = this.x - value.x,
+            y = this.y - value.y,
+            z = this.z - value.z
+        )
+
+    // Векторное произведение
+    fun crossProduct(other: Vector): Vector =
+        Vector(
+            x = this.y * other.z - this.z * other.y,
+            y = this.z * other.x - this.x * other.z,
+            z = this.x * other.y - this.y * other.x
+        )
+
+    // Скалярное произведение
+    fun dotProduct(other: Vector): Float = this.x * other.x + this.y * other.y + this.z * other.z
+
+    fun distance(): Float = sqrt(x * x + y * y + z * z)
+
+    fun normalize(): Vector = this / this.distance()
+
+    fun toVertex(): Vertex =
+        Vertex(
+            x = this.x,
+            y = this.y,
+            z = this.z
+        )
+
+    fun toList(): List<Float> = listOf(x, y, z)
+}
+
+operator fun Float.times(value: Vector): Vector = value * this
+
+fun List<Vector>.average(): Vector {
+    val averageX = this.map(Vector::x).sum() / this.count()
+    val averageY = this.map(Vector::y).sum() / this.count()
+    val averageZ = this.map(Vector::z).sum() / this.count()
+    return Vector(
+        x = averageX,
+        y = averageY,
+        z = averageZ
+    )
+}
+
+data class VectorOfVector(
+    val v1: Vector,
+    val v2: Vector,
+    val v3: Vector
+) {
+    operator fun times(v: Vector): Vector = Vector(
+        x = 0f,
+        y = 0f,
+        z = 0f
+    )
+}
+
+data class TransposedVector(
+    val p1: Float,
+    val p2: Float,
+    val p3: Float
+) {
+    operator fun times(v: Vector): VectorOfVector = VectorOfVector(
+        v1 = Vector(x = this.p1 * v.x, y = this.p1 * v.y, z = this.p1 * v.z),
+        v2 = Vector(x = this.p2 * v.x, y = this.p2 * v.y, z = this.p2 * v.z),
+        v3 = Vector(x = this.p3 * v.x, y = this.p3 * v.y, z = this.p3 * v.z)
+    )
+}
+
+
+_#subkey
+Класс Vertex
+
+package com.supesuba.smoothing
+
+typealias Normal = Vector
+
+data class Vertex(
+    val x: Float,
+    val y: Float,
+    val z: Float
+) {
+
+    lateinit var normal: Normal
+
+    operator fun minus(other: Vertex): Vector =
+        Vector(
+            x = this.x - other.x,
+            y = this.y - other.y,
+            z = this.z - other.z
+        )
+
+    operator fun times(value: Float): Vertex =
+        Vertex(
+            x = this.x * value,
+            y = this.y * value,
+            z = this.z * value
+        )
+
+    operator fun plus(value: Float): Vertex =
+        Vertex(
+            x = this.x + value,
+            y = this.y + value,
+            z = this.z + value
+        )
+
+    operator fun plus(value: Vertex): Vertex =
+        Vertex(
+            x = this.x + value.x,
+            y = this.y + value.y,
+            z = this.z + value.z
+        )
+
+    operator fun div(value: Float): Vertex =
+        Vertex(
+            x = this.x / value,
+            y = this.y / value,
+            z = this.z / value
+        )
+
+    fun toVector(): Vector =
+        Vector(
+            x = this.x,
+            y = this.y,
+            z = this.z
+        )
+
+    fun toVertexNormal(triangles: List<Triangle>) {
+        normal = triangles.map(Triangle::normal).average().normalize()
+    }
+
+    fun toList(): List<Float> = listOf(x, y, z)
+
+    fun getNormalList(): List<Float> = normal.toList()
+}
+
+operator fun Float.times(value: Vertex): Vertex =
+    Vertex(
+        x = this * value.x,
+        y = this * value.y,
+        z = this * value.z
+    )
+
+fun FloatArray.toVertexList(): List<Vertex> {
+    val vertices = mutableListOf<Vertex>()
+    for (i in 0 until this.count() - 2 step 3) {
+        vertices += Vertex(
+            x = this[i],
+            y = this[i + 1],
+            z = this[i + 2]
+        )
+    }
+
+    return vertices
+}
+
+

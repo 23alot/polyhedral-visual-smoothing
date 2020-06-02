@@ -1,5 +1,6 @@
 package com.supesuba.smoothing.presentation.view.fragment
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -7,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.supesuba.navigation.ui.BaseFragment
@@ -15,6 +17,7 @@ import com.supesuba.smoothing.model.repository.ModelInfo
 import com.supesuba.smoothing.presentation.view.adapter.ModelAdapter
 import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewModel
 import com.supesuba.smoothing.presentation.viewmodel.import_model.ImportViewState
+import com.supesuba.utils.common.extension
 import com.supesuba.utils.common.fileName
 import kotlinx.android.synthetic.main.fragment_import.*
 import kotlinx.coroutines.Dispatchers
@@ -68,7 +71,6 @@ class ImportFragment : BaseFragment(), ModelAdapter.OnModelClickListener {
         GlobalScope.launch(Dispatchers.Main) {
             model.onCreate()
         }
-
     }
 
     private fun updateState(state: ImportViewState) {
@@ -91,25 +93,30 @@ class ImportFragment : BaseFragment(), ModelAdapter.OnModelClickListener {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        // TODO: проверка request и result code
-        val a = File(data?.data?.encodedPath)
+        if (resultCode == Activity.RESULT_OK && data != null) {
 
-        val dir = requireContext().getDir("models", Context.MODE_PRIVATE)
+            val filename = data.data?.path!!.fileName()
+            if (filename.extension() != "obj") {
+                Toast.makeText(requireContext(), "Неверный формат модели", Toast.LENGTH_LONG).show()
+                return
+            }
+            val dir = requireContext().getDir("models", Context.MODE_PRIVATE)
 
-        requireContext().contentResolver.openInputStream(data?.data!!).use { inputStream ->
-            val file = File(dir, data.data?.path!!.fileName())
-            FileOutputStream(file).use { outputStream ->
-                val buf = ByteArray(1024)
-                var len = inputStream?.read(buf) ?: 0
-                while (len > 0) {
-                    outputStream.write(buf, 0, len)
-                    len = inputStream?.read(buf) ?: 0
+            requireContext().contentResolver.openInputStream(data?.data!!).use { inputStream ->
+                val file = File(dir, filename)
+                FileOutputStream(file).use { outputStream ->
+                    val buf = ByteArray(1024)
+                    var len = inputStream?.read(buf) ?: 0
+                    while (len > 0) {
+                        outputStream.write(buf, 0, len)
+                        len = inputStream?.read(buf) ?: 0
+                    }
                 }
             }
-        }
 
-        GlobalScope.launch(Dispatchers.Main) {
-            model.onCreate()
+            GlobalScope.launch(Dispatchers.Main) {
+                model.onCreate()
+            }
         }
     }
 

@@ -48,17 +48,18 @@ class SmoothingPNFragment : BaseFragment() {
             }
 
             override fun onStopTrackingTouch(p0: SeekBar?) {
-                model.onTessellationLevelChanged(p0?.progress ?: 1)
+                model.onTessellationLevelChanged(p0?.progress?.plus(1) ?: 1)
             }
         })
 
         val modelInfo = arguments?.getParcelable<ModelInfo>(MODEL)
-        model.onCreate(modelInfo!!)
         model.subscribe { state -> showState(state) }
+        model.onCreate(modelInfo!!)
     }
 
     private fun showState(state: SmoothingViewState) {
         renderView.onReadyToRender(state.renderObject)
+        smoothingTimeTV.text = "${state.renderObject.computationTime}мс"
     }
 
     override fun onResume() {

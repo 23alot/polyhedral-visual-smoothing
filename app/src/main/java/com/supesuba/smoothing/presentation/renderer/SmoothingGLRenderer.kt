@@ -66,7 +66,7 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
         vertexColourLocation = GLES32.glGetAttribLocation(mProgram, "vertexColour")
         GLES32.glViewport(0, 0, width, height)
         GLES32.glUseProgram(mProgram)
-        GLES32.glDisable(GLES32.GL_DITHER)
+//        GLES32.glDisable(GLES32.GL_DITHER)
         GLES32.glEnable(GLES32.GL_CULL_FACE)
         GLES32.glCullFace(GLES32.GL_FRONT)
 
@@ -173,7 +173,7 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
         val cBuffer = renderObject.colorsArray.toFloatBuffer()
 
         GLES32.glGetAttribLocation(mProgram, "vertexNormal").also { normalPosition ->
-            GLES32.glVertexAttribPointer(normalPosition, 3, GLES32.GL_FLOAT, false, 0, nBuffer.position(0))
+            GLES32.glVertexAttribPointer(normalPosition, 3, GLES32.GL_FLOAT, true, 0, nBuffer.position(0))
             GLES32.glEnableVertexAttribArray(normalPosition)
         }
 
@@ -185,7 +185,7 @@ class SmoothingGLRenderer(private val shaderRepository: ShaderRepository) : GLSu
 
 
         GLES32.glDrawArrays(GLES32.GL_TRIANGLES, 0, renderObject.verticesArray.count() / 3)
-        GLES32.glFlush()
+//        GLES32.glFlush()
     }
 }
 

@@ -53,8 +53,9 @@ class SmoothingViewModel constructor(
 
         val r4 = ObjData.getVerticesArray(a5)
         val points = r4.toVertexList()
-        for (i in 0 until obj.numFaces) {
-            val face = obj.getFace(i)
+        val triangles = mutableListOf<Triangle>()
+        for (i in 0 until a5.numFaces) {
+            val face = a5.getFace(i)
             val l = mutableListOf<Int>()
             val tv = mutableListOf<Vertex>()
             for (z in 0 until face.numVertices) {
@@ -69,11 +70,14 @@ class SmoothingViewModel constructor(
                 v3 = tv[2]
             )
 
-            smoothingInteractor.addTriangle(t)
+            triangles += t
         }
+
+        smoothingInteractor.setTriangles(triangles)
 
         smoothingInteractor.calculateVertexNormals(vertices = points)
         smoothingInteractor.calculateSupportPoints()
+        smoothingInteractor.tessellate(1)
     }
 
     fun onTessellationLevelChanged(tessellationLevel: Int) {
