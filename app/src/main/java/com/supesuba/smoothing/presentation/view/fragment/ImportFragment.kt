@@ -52,7 +52,7 @@ class ImportFragment : BaseFragment(), ModelAdapter.OnModelClickListener {
 
         fileChooser.setOnClickListener {
             val intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.type = "text/obj" //Obj file only
+            intent.type = "text/*" //Obj file only
 
             intent.addCategory(Intent.CATEGORY_OPENABLE)
 
